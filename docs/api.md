@@ -379,6 +379,84 @@ Response `200`: the seller order object, `status: "cancelled"`, `cancelledAt` se
 
 Errors: `404 ORDER_NOT_FOUND`.
 
+## Reports (seller)
+
+Both are worked out from the orders on every request, so they are always up to
+date (nothing is stored). Cancelled orders never count. `paidOnly=true` counts
+only paid orders; the value must be exactly `true` or `false`.
+
+### GET /api/menus/:id/prep-sheet
+
+Portions to cook per item, in menu order. Items nobody ordered show `0`.
+
+```
+GET /api/menus/6710b2d3e4b0a1b2c3d4e5f7/prep-sheet?paidOnly=false
+Authorization: Bearer <token>
+```
+
+Response `200`:
+
+```json
+{
+  "menuId": "6710b2d3e4b0a1b2c3d4e5f7",
+  "title": "Week of 13 Oct",
+  "paidOnly": false,
+  "items": [
+    { "itemId": "6710b2d3e4b0a1b2c3d4e5f8", "name": "Jollof rice", "portions": 7, "orders": 3 },
+    { "itemId": "6710b2d3e4b0a1b2c3d4e5fa", "name": "Chapman", "portions": 6, "orders": 3 },
+    { "itemId": "6710b2d3e4b0a1b2c3d4e5fb", "name": "Egusi", "portions": 0, "orders": 0 }
+  ],
+  "totals": { "orders": 4, "portions": 13, "amount": 33500 }
+}
+```
+
+`totals.amount` is the naira expected from the counted orders.
+
+Errors: `400 VALIDATION_ERROR` (bad `paidOnly`), `404 MENU_NOT_FOUND`.
+
+### GET /api/menus/:id/delivery-list
+
+Orders grouped by delivery area, in the order the menu lists its areas. Within
+an area: by delivery day, then in the order they came in. Optional
+`?day=YYYY-MM-DD` for one delivery day, and `?paidOnly=true`.
+
+```
+GET /api/menus/6710b2d3e4b0a1b2c3d4e5f7/delivery-list?day=2026-10-17
+Authorization: Bearer <token>
+```
+
+Response `200`:
+
+```json
+{
+  "menuId": "6710b2d3e4b0a1b2c3d4e5f7",
+  "title": "Week of 13 Oct",
+  "paidOnly": false,
+  "day": "2026-10-17",
+  "areas": [
+    {
+      "area": "Yaba",
+      "count": 1,
+      "orders": [
+        {
+          "ref": "CL-7KQ2M",
+          "status": "paid",
+          "customer": { "name": "Ada Obi", "phone": "+2348091112222" },
+          "address": "12 Herbert Macaulay Way, Yaba",
+          "day": "2026-10-17",
+          "note": "Extra pepper",
+          "lines": [{ "name": "Jollof rice", "qty": 2 }],
+          "total": 7000
+        }
+      ]
+    }
+  ],
+  "totalOrders": 1
+}
+```
+
+Errors: `400 VALIDATION_ERROR` (bad `paidOnly` or `day`), `404 MENU_NOT_FOUND`.
+
 ## Public routes (customers, no sign-in)
 
 Rate limits, per IP address (counted on every attempt, valid or not):
