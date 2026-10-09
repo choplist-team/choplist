@@ -24,6 +24,9 @@ Every error, on every route, has this shape:
 | 400 | `INVALID_JSON` | Request body is not valid JSON |
 | 400 | `BAD_REQUEST` | Request could not be read |
 | 400 | `VALIDATION_ERROR` | A field is missing or wrong; `message` names each field, e.g. `phone: Enter a Nigerian mobile number, e.g. 0803 123 4567` |
+| 400 | `ITEM_NOT_FOUND` | An ordered item is not on this menu |
+| 400 | `INVALID_AREA` | Delivery area is not one the menu lists (the message lists them) |
+| 400 | `INVALID_DELIVERY_DAY` | Delivery day is not one the menu lists (the message lists them) |
 | 401 | `UNAUTHENTICATED` | No valid Clerk token on a seller route |
 | 403 | `PROFILE_REQUIRED` | Signed in, but no seller profile yet: show onboarding, then `PUT /api/sellers/me` |
 | 404 | `NOT_FOUND` | No route matches the method and path |
@@ -34,6 +37,8 @@ Every error, on every route, has this shape:
 | 409 | `MENU_NOT_OPEN` | Closing a draft |
 | 409 | `ANOTHER_MENU_OPEN` | Opening a menu while another of yours is open |
 | 409 | `CUTOFF_PASSED` | Opening a draft whose cut-off is in the past (edit it first) |
+| 409 | `ORDERING_CLOSED` | The menu is closed, not yet open, or past its cut-off |
+| 409 | `SOLD_OUT` | Not enough stock for at least one item; nothing was taken. The message names it, e.g. `Not enough left: only 2 Jollof rice left` |
 | 413 | `PAYLOAD_TOO_LARGE` | Request body is over 20 KB |
 | 500 | `INTERNAL_ERROR` | Server bug or outage; details are logged, never returned |
 

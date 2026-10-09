@@ -20,6 +20,25 @@ const orderLineSchema = new Schema(
   { _id: false },
 );
 
+// Required sub-schemas (not plain nested objects) so TypeScript knows every
+// order has them, as with Seller.payment.
+const customerSchema = new Schema(
+  {
+    name: { type: String, required: true, trim: true, maxlength: 80 },
+    phone: { type: String, required: true, match: PHONE_PATTERN },
+  },
+  { _id: false },
+);
+
+const deliverySchema = new Schema(
+  {
+    area: { type: String, required: true, trim: true, maxlength: 60 },
+    address: { type: String, required: true, trim: true, maxlength: 300 },
+    day: { type: String, required: true, match: DAY_PATTERN },
+  },
+  { _id: false },
+);
+
 const orderSchema = new Schema(
   {
     // The code the customer quotes when paying. Unique, enforced by the database.
@@ -30,16 +49,8 @@ const orderSchema = new Schema(
     sellerId: { type: Schema.Types.ObjectId, ref: 'Seller', required: true },
     menuId: { type: Schema.Types.ObjectId, ref: 'Menu', required: true },
 
-    customer: {
-      name: { type: String, required: true, trim: true, maxlength: 80 },
-      phone: { type: String, required: true, match: PHONE_PATTERN },
-    },
-
-    delivery: {
-      area: { type: String, required: true, trim: true, maxlength: 60 },
-      address: { type: String, required: true, trim: true, maxlength: 300 },
-      day: { type: String, required: true, match: DAY_PATTERN },
-    },
+    customer: { type: customerSchema, required: true },
+    delivery: { type: deliverySchema, required: true },
 
     note: { type: String, trim: true, maxlength: 300 },
 
