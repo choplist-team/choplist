@@ -101,6 +101,23 @@ describe.skipIf(!testDbUri)('/api/sellers/me on a real MongoDB', () => {
     expect(res.body.id).toBe(a!._id.toString());
   });
 
+  it('choosing a taken link at sign-up is 409 SLUG_TAKEN and creates nothing', async () => {
+    const res = await putMe('user_d', profile({ slug: 'mama-t-yaba' }));
+    expect(res.status).toBe(409);
+    expect(res.body.error).toEqual({ code: 'SLUG_TAKEN', message: 'The link "mama-t-yaba" is taken' });
+    expect(await SellerModel.countDocuments({ clerkUserId: 'user_d' })).toBe(0);
+  });
+
+  it('when the generated link and all its variants are taken, asks the seller to choose', async () => {
+    const taken = ['busy-kitchen', ...Array.from({ length: 19 }, (_, i) => `busy-kitchen-${i + 2}`)];
+    await SellerModel.insertMany(
+      taken.map((slug, i) => ({ ...profile(), phone: '+2348031234567', clerkUserId: `filler_${i}`, slug })),
+    );
+    const res = await putMe('user_e', profile({ businessName: 'Busy Kitchen' }));
+    expect(res.status).toBe(409);
+    expect(res.body.error.message).toBe('Could not find a free link for this business name; choose one');
+  });
+
   it('two first-time PUTs from the same user at once create exactly one profile', async () => {
     const results = await Promise.all([putMe('user_c', profile()), putMe('user_c', profile())]);
     expect(results.map((r) => r.status).sort()).toEqual([200, 201]);
