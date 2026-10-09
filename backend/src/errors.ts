@@ -21,6 +21,9 @@ export const ERROR_CODES = [
   'INVALID_AREA',
   'INVALID_DELIVERY_DAY',
   'SOLD_OUT',
+  'SELLER_NOT_FOUND',
+  'ORDER_NOT_FOUND',
+  'RATE_LIMITED',
   'INTERNAL_ERROR',
 ] as const;
 
