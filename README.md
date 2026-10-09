@@ -13,7 +13,7 @@ AltSchool Tinyuka 2025 Capstone, Group 1.
 
 ## Live links
 
-- Frontend: TBC
+- Frontend: https://choplist.onrender.com
 - API: TBC
 - Health check: TBC
 
