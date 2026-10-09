@@ -6,30 +6,35 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
+  --background: rgba(255, 253, 248, 1);
+  --foreground: rgba(36, 43, 36, 1);
 
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
+  --card: rgba(255, 255, 255, 1);
+  --card-foreground: rgba(36, 43, 36, 1);
 
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
 
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
+  --primary: rgba(49, 91, 64, 1);
+  --primary-foreground: rgba(255, 255, 255, 1);
 
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
 
   --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
+  --muted-foreground: rgba(114, 118, 107, 1);
+
+  --soft-green: rgba(232, 238, 226, 1);
+
+  --warning: rgba(250, 237, 215, 1);
+  --warning-foreground: rgba(139, 90, 32, 1);
 
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
 
   --destructive: oklch(0.577 0.245 27.325);
 
-  --border: oklch(0.922 0 0);
+  --border: rgba(225, 225, 214, 1);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.708 0 0);
 
@@ -91,6 +96,10 @@
 
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+
+  --color-soft-green: var(--soft-green);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
 
   --color-foreground: var(--foreground);
   --color-background: var(--background);
