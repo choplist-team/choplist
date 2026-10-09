@@ -7,6 +7,9 @@ import { AppError } from '../errors.js';
 import { MenuModel, type MenuDoc } from '../models/menu.js';
 import { ORDER_STATUSES, OrderModel } from '../models/order.js';
 import { toSellerOrder } from '../orders/seller-view.js';
+import { deliveryList } from '../reports/delivery-list.js';
+import { prepSheet } from '../reports/prep-sheet.js';
+import { calendarDay } from '../validation/day.js';
 import { menuBodySchema, toMenuFields, toMenuResponse } from './schema.js';
 
 // A malformed id and someone else's menu both give the same 404, so a seller
@@ -31,6 +34,17 @@ async function loadOrNotFound(filter: ReturnType<typeof menuFilter>): Promise<Me
 }
 
 const orderListQuery = z.object({ status: z.enum(ORDER_STATUSES).optional() });
+
+// Query strings are always text: "false" is a non-empty string, which
+// JavaScript (and z.coerce.boolean) treat as true. Accept exactly "true" or
+// "false" instead.
+const paidOnly = z
+  .enum(['true', 'false'], { error: 'paidOnly must be true or false' })
+  .optional()
+  .transform((value) => value === 'true');
+
+const prepSheetQuery = z.object({ paidOnly });
+const deliveryListQuery = z.object({ paidOnly, day: calendarDay.optional() });
 
 function isDuplicateKey(err: unknown): boolean {
   return err instanceof mongo.MongoServerError && err.code === 11000;
@@ -71,6 +85,22 @@ export function createMenuRouter(auth: AuthProvider): Router {
       ...(status ? { status } : {}),
     }).sort({ createdAt: -1 });
     res.json({ orders: orders.map(toSellerOrder) });
+  });
+
+  // Portions to cook per item, from the orders right now (never stored).
+  router.get('/:id/prep-sheet', async (req, res) => {
+    const filter = menuFilter(req);
+    const query = prepSheetQuery.parse(req.query);
+    const menu = await loadOrNotFound(filter);
+    res.json(await prepSheet(filter.sellerId, menu, query.paidOnly));
+  });
+
+  // Orders grouped by delivery area, optionally for one delivery day.
+  router.get('/:id/delivery-list', async (req, res) => {
+    const filter = menuFilter(req);
+    const query = deliveryListQuery.parse(req.query);
+    const menu = await loadOrNotFound(filter);
+    res.json(await deliveryList(filter.sellerId, menu, { paidOnly: query.paidOnly, day: query.day }));
   });
 
   // Replace a draft. One conditional write: it only matches while the menu is
