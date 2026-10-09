@@ -1,11 +1,21 @@
 import { createApp } from './app.js';
 import { parseEnv, type Config } from './config.js';
+import { connectDb, disconnectDb } from './db.js';
 
 let config: Config;
 try {
   config = parseEnv(process.env);
 } catch (err) {
   console.error(err instanceof Error ? err.message : err);
+  process.exit(1);
+}
+
+// Connect (and build indexes) before listening, so the first request never
+// meets a missing database or a missing unique index.
+try {
+  await connectDb(config.MONGO_URI);
+} catch (err) {
+  console.error('Could not connect to MongoDB:', err instanceof Error ? err.message : err);
   process.exit(1);
 }
 
@@ -22,10 +32,13 @@ server.on('error', (err) => {
 });
 
 // Render sends SIGTERM before stopping the instance; Ctrl+C sends SIGINT.
-// Stop accepting new connections and let in-flight requests finish.
+// Stop accepting new connections, let in-flight requests finish, then close
+// the database connection.
 function shutdown(signal: string) {
   console.log(`${signal} received, shutting down`);
-  server.close(() => process.exit(0));
+  server.close(() => {
+    disconnectDb().finally(() => process.exit(0));
+  });
 }
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
