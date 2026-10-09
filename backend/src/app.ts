@@ -3,6 +3,7 @@ import express, { type Express } from 'express';
 import helmet from 'helmet';
 import type { AuthProvider } from './auth/provider.js';
 import { errorHandler, notFound } from './middleware/error-handler.js';
+import { createMenuRouter } from './menus/router.js';
 import { createSellerRouter } from './sellers/router.js';
 
 // The biggest legitimate body is a seller's menu with a few dozen items
@@ -36,6 +37,7 @@ export function createApp(options: AppOptions): Express {
   });
 
   app.use('/api/sellers', createSellerRouter(options.auth));
+  app.use('/api/menus', createMenuRouter(options.auth));
 
   app.use(notFound);
   app.use(errorHandler);
