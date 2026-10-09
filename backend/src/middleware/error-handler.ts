@@ -1,4 +1,5 @@
 import type { ErrorRequestHandler, RequestHandler, Response } from 'express';
+import { ZodError } from 'zod';
 import { AppError, type ErrorCode } from '../errors.js';
 
 type ErrorBody = { error: { code: ErrorCode; message: string } };
@@ -33,6 +34,16 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
 
   if (err instanceof AppError) {
     send(res, err.status, err.code, err.message);
+    return;
+  }
+
+  // A request body that failed its zod schema. One readable line per problem,
+  // e.g. "phone: Enter a Nigerian mobile number; payment.accountNumber: ...".
+  if (err instanceof ZodError) {
+    const message = err.issues
+      .map((issue) => `${issue.path.length ? issue.path.join('.') : 'body'}: ${issue.message}`)
+      .join('; ');
+    send(res, 400, 'VALIDATION_ERROR', message);
     return;
   }
 

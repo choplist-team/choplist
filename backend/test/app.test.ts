@@ -4,9 +4,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../src/app.js';
 import { AppError } from '../src/errors.js';
 import { errorHandler, notFound } from '../src/middleware/error-handler.js';
+import { fakeAuth } from './helpers/fake-auth.js';
 
 const FRONTEND = 'http://localhost:5173';
-const app = createApp({ allowedOrigins: [FRONTEND] });
+const app = createApp({ allowedOrigins: [FRONTEND], auth: fakeAuth });
 
 describe('GET /health', () => {
   it('returns 200 with status ok', async () => {

@@ -1,28 +1,18 @@
-import mongoose, { Types } from 'mongoose';
+import { Types } from 'mongoose';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { connectDb, disconnectDb } from '../src/db.js';
 import { MenuModel } from '../src/models/menu.js';
 import { OrderModel } from '../src/models/order.js';
 import { SellerModel } from '../src/models/seller.js';
+import { connectTestDb, disconnectTestDb, testDbUri } from './helpers/db.js';
 
-// Runs only when MONGO_URI_TEST points at a throwaway database whose name ends
-// in "_test". That database is DROPPED at the start.
-const uri = process.env.MONGO_URI_TEST;
-
-describe.skipIf(!uri)('indexes on a real MongoDB', () => {
+// Runs only when MONGO_URI_TEST is set. Uses (and wipes) its own "models_test" database.
+describe.skipIf(!testDbUri)('indexes on a real MongoDB', () => {
   beforeAll(async () => {
-    await connectDb(uri!);
-    // Refuse to wipe anything that is not clearly a test database.
-    if (!mongoose.connection.name.endsWith('_test')) {
-      throw new Error(`Refusing to drop "${mongoose.connection.name}": MONGO_URI_TEST must name a *_test database`);
-    }
-    await mongoose.connection.dropDatabase();
-    // dropDatabase removes the indexes too; rebuild them like startup does.
-    await Promise.all([SellerModel.createIndexes(), MenuModel.createIndexes(), OrderModel.createIndexes()]);
+    await connectTestDb('models');
   });
 
   afterAll(async () => {
-    await disconnectDb();
+    await disconnectTestDb();
   });
 
   const seller = (clerkUserId: string, slug: string) => ({
