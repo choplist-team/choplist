@@ -1,7 +1,9 @@
 import cors from 'cors';
 import express, { type Express } from 'express';
 import helmet from 'helmet';
+import type { AuthProvider } from './auth/provider.js';
 import { errorHandler, notFound } from './middleware/error-handler.js';
+import { createSellerRouter } from './sellers/router.js';
 
 // The biggest legitimate body is a seller's menu with a few dozen items
 // (a few KB). Anything far larger is a mistake or abuse.
@@ -9,6 +11,8 @@ const JSON_BODY_LIMIT = '20kb';
 
 export type AppOptions = {
   allowedOrigins: string[];
+  // Clerk in production, a fake in tests.
+  auth: AuthProvider;
 };
 
 // Builds the app without listening on a port or connecting to a database,
@@ -31,7 +35,7 @@ export function createApp(options: AppOptions): Express {
     res.json({ status: 'ok' });
   });
 
-  // API routers are mounted under /api in later steps.
+  app.use('/api/sellers', createSellerRouter(options.auth));
 
   app.use(notFound);
   app.use(errorHandler);

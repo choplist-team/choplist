@@ -36,6 +36,15 @@ const EnvSchema = z.object({
         )
         .min(1, 'ALLOWED_ORIGINS must list at least one origin'),
     ),
+
+  // From the Clerk dashboard (API keys). The publishable key is the same value
+  // the frontend uses as VITE_CLERK_PUBLISHABLE_KEY.
+  CLERK_SECRET_KEY: z
+    .string({ error: 'CLERK_SECRET_KEY is required' })
+    .startsWith('sk_', 'CLERK_SECRET_KEY must start with sk_'),
+  CLERK_PUBLISHABLE_KEY: z
+    .string({ error: 'CLERK_PUBLISHABLE_KEY is required' })
+    .startsWith('pk_', 'CLERK_PUBLISHABLE_KEY must start with pk_'),
 });
 
 export type Config = z.infer<typeof EnvSchema>;

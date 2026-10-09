@@ -1,4 +1,5 @@
 import { createApp } from './app.js';
+import { createClerkAuth } from './auth/clerk.js';
 import { parseEnv, type Config } from './config.js';
 import { connectDb, disconnectDb } from './db.js';
 
@@ -19,7 +20,14 @@ try {
   process.exit(1);
 }
 
-const app = createApp({ allowedOrigins: config.ALLOWED_ORIGINS });
+const app = createApp({
+  allowedOrigins: config.ALLOWED_ORIGINS,
+  auth: createClerkAuth({
+    secretKey: config.CLERK_SECRET_KEY,
+    publishableKey: config.CLERK_PUBLISHABLE_KEY,
+    authorizedParties: config.ALLOWED_ORIGINS,
+  }),
+});
 
 const server = app.listen(config.PORT, () => {
   console.log(`ChopList API listening on port ${config.PORT}`);

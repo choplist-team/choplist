@@ -5,6 +5,8 @@ const valid = {
   PORT: '5000',
   MONGO_URI: 'mongodb+srv://user:pass@cluster0.example.mongodb.net/choplist',
   ALLOWED_ORIGINS: 'http://localhost:5173, https://choplist.onrender.com',
+  CLERK_SECRET_KEY: 'sk_test_dummy',
+  CLERK_PUBLISHABLE_KEY: 'pk_test_dummy',
 };
 
 describe('parseEnv', () => {
@@ -36,6 +38,14 @@ describe('parseEnv', () => {
 
   it('rejects an empty ALLOWED_ORIGINS list', () => {
     expect(() => parseEnv({ ...valid, ALLOWED_ORIGINS: ' , ' })).toThrow(/at least one origin/);
+  });
+
+  it('rejects Clerk keys that are missing or swapped', () => {
+    const { CLERK_SECRET_KEY: _unused, ...withoutSecret } = valid;
+    expect(() => parseEnv(withoutSecret)).toThrow(/CLERK_SECRET_KEY is required/);
+    expect(() =>
+      parseEnv({ ...valid, CLERK_SECRET_KEY: valid.CLERK_PUBLISHABLE_KEY, CLERK_PUBLISHABLE_KEY: valid.CLERK_SECRET_KEY }),
+    ).toThrow(/must start with sk_[\s\S]*must start with pk_/);
   });
 
   it('rejects a non-numeric PORT', () => {
