@@ -3,7 +3,9 @@ import express, { type Express } from 'express';
 import helmet from 'helmet';
 import type { AuthProvider } from './auth/provider.js';
 import { errorHandler, notFound } from './middleware/error-handler.js';
+import { DEFAULT_RATE_LIMITS, type RateLimitSettings } from './middleware/rate-limit.js';
 import { createMenuRouter } from './menus/router.js';
+import { createPublicRouter } from './public/router.js';
 import { createSellerRouter } from './sellers/router.js';
 
 // The biggest legitimate body is a seller's menu with a few dozen items
@@ -14,12 +16,19 @@ export type AppOptions = {
   allowedOrigins: string[];
   // Clerk in production, a fake in tests.
   auth: AuthProvider;
+  // Tests use small limits to exercise them, large ones to stay out of the way.
+  rateLimits?: RateLimitSettings;
 };
 
 // Builds the app without listening on a port or connecting to a database,
 // so tests can send requests to it directly with supertest.
 export function createApp(options: AppOptions): Express {
   const app = express();
+
+  // Render puts one proxy in front of the app. Trusting exactly one hop makes
+  // req.ip the real client (from X-Forwarded-For), which the rate limits need.
+  // Trusting more hops than exist would let a client fake its IP.
+  app.set('trust proxy', 1);
 
   // Security headers (nosniff, frame protection, etc.) and no X-Powered-By.
   app.use(helmet());
@@ -38,6 +47,7 @@ export function createApp(options: AppOptions): Express {
 
   app.use('/api/sellers', createSellerRouter(options.auth));
   app.use('/api/menus', createMenuRouter(options.auth));
+  app.use('/api/public', createPublicRouter(options.rateLimits ?? DEFAULT_RATE_LIMITS));
 
   app.use(notFound);
   app.use(errorHandler);

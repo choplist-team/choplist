@@ -31,6 +31,8 @@ Every error, on every route, has this shape:
 | 403 | `PROFILE_REQUIRED` | Signed in, but no seller profile yet: show onboarding, then `PUT /api/sellers/me` |
 | 404 | `NOT_FOUND` | No route matches the method and path |
 | 404 | `MENU_NOT_FOUND` | No such menu for this seller (also for another seller's menu, and malformed ids) |
+| 404 | `SELLER_NOT_FOUND` | No seller has this public link |
+| 404 | `ORDER_NOT_FOUND` | No order matches that reference and phone digits (same error for both) |
 | 409 | `SLUG_TAKEN` | The chosen link is used by another seller |
 | 409 | `MENU_NOT_DRAFT` | Editing a menu that is open or closed |
 | 409 | `MENU_CLOSED` | Opening a closed menu (create a new one instead) |
@@ -40,6 +42,7 @@ Every error, on every route, has this shape:
 | 409 | `ORDERING_CLOSED` | The menu is closed, not yet open, or past its cut-off |
 | 409 | `SOLD_OUT` | Not enough stock for at least one item; nothing was taken. The message names it, e.g. `Not enough left: only 2 Jollof rice left` |
 | 413 | `PAYLOAD_TOO_LARGE` | Request body is over 20 KB |
+| 429 | `RATE_LIMITED` | Too many orders or lookups from one network; wait (see the `RateLimit` header) |
 | 500 | `INTERNAL_ERROR` | Server bug or outage; details are logged, never returned |
 
 More codes are added as routes are built.
@@ -298,3 +301,130 @@ Errors: `404 MENU_NOT_FOUND`, `409 MENU_NOT_OPEN` (it is still a draft).
 
 Note: a menu stays `open` after its cut-off until the seller closes it, but
 orders are refused once `cutoffAt` has passed.
+
+## Public routes (customers, no sign-in)
+
+Rate limits, per IP address (counted on every attempt, valid or not):
+
+| Route | Limit |
+| ----- | ----- |
+| `POST /api/public/orders` | 20 per 10 minutes |
+| `GET /api/public/orders/:ref` | 30 per 10 minutes |
+
+Over the limit: `429 RATE_LIMITED`, with a `RateLimit` header saying when to retry.
+
+### GET /api/public/menu/:slug
+
+A seller's public page: their open menu. `slug` is not case-sensitive.
+
+```
+GET /api/public/menu/mama-ts-kitchen
+```
+
+Response `200`:
+
+```json
+{
+  "seller": { "businessName": "Mama T's Kitchen", "slug": "mama-ts-kitchen", "phone": "+2348031234567" },
+  "menu": {
+    "id": "6710b2d3e4b0a1b2c3d4e5f7",
+    "title": "Week of 13 Oct",
+    "cutoffAt": "2026-10-16T17:00:00.000Z",
+    "acceptingOrders": true,
+    "items": [
+      {
+        "id": "6710b2d3e4b0a1b2c3d4e5f8",
+        "name": "Jollof rice",
+        "description": "With fried plantain",
+        "price": 3500,
+        "qtyRemaining": 3,
+        "soldOut": false
+      }
+    ],
+    "areas": ["Yaba", "Surulere"],
+    "deliveryDays": ["2026-10-17", "2026-10-18"]
+  }
+}
+```
+
+- `menu` is `null` when the seller has no open menu: show "no menu open right now".
+- `acceptingOrders` is `false` once the cut-off has passed, even if the seller has
+  not closed the menu yet. Hide the order button when it is `false`.
+
+Errors: `404 SELLER_NOT_FOUND`.
+
+### POST /api/public/orders
+
+Places an order. Prices come from the menu; any price or total in the body is ignored.
+
+- `customer.phone`: any Nigerian mobile format (`0809 111 2222`, `+234...`), as a string.
+- `delivery.area` and `delivery.day` must be one of the menu's `areas` and
+  `deliveryDays` (area is not case-sensitive).
+- `lines`: 1 to 30, `qty` a whole number from 1 to 100. The same item twice is added together.
+- `note` is optional (up to 300 characters).
+
+```
+POST /api/public/orders
+Content-Type: application/json
+```
+
+```json
+{
+  "menuId": "6710b2d3e4b0a1b2c3d4e5f7",
+  "customer": { "name": "Ada Obi", "phone": "0809 111 2222" },
+  "delivery": { "area": "Yaba", "address": "12 Herbert Macaulay Way, Yaba", "day": "2026-10-17" },
+  "note": "Extra pepper",
+  "lines": [
+    { "itemId": "6710b2d3e4b0a1b2c3d4e5f8", "qty": 2 }
+  ]
+}
+```
+
+Response `201`:
+
+```json
+{
+  "order": {
+    "ref": "CL-7KQ2M",
+    "status": "pending",
+    "customerName": "Ada Obi",
+    "lines": [{ "name": "Jollof rice", "unitPrice": 3500, "qty": 2 }],
+    "total": 7000,
+    "delivery": { "area": "Yaba", "day": "2026-10-17" },
+    "createdAt": "2026-10-09T21:25:46.870Z"
+  },
+  "payment": {
+    "amount": 7000,
+    "reference": "CL-7KQ2M",
+    "bankName": "GTBank",
+    "accountNumber": "0123456789",
+    "accountName": "Titilayo Adebayo",
+    "instructions": "Transfer ₦7,000 to Titilayo Adebayo, GTBank 0123456789, and write CL-7KQ2M as the transfer description so Mama T's Kitchen can match your payment."
+  },
+  "seller": { "businessName": "Mama T's Kitchen", "slug": "mama-ts-kitchen", "phone": "+2348031234567" }
+}
+```
+
+Show the customer `payment.instructions` and the reference prominently. The order
+stays `pending` until the seller marks it paid.
+
+Errors: `400 VALIDATION_ERROR`, `400 ITEM_NOT_FOUND`, `400 INVALID_AREA`,
+`400 INVALID_DELIVERY_DAY`, `404 MENU_NOT_FOUND`, `409 ORDERING_CLOSED`,
+`409 SOLD_OUT` (nothing was taken; the message says what is left),
+`429 RATE_LIMITED`.
+
+### GET /api/public/orders/:ref?phoneLast4=1234
+
+Lets a customer check their order. Needs the reference **and** the last 4 digits
+of the phone number used to order. The reference is not case-sensitive.
+
+```
+GET /api/public/orders/CL-7KQ2M?phoneLast4=2222
+```
+
+Response `200`: same body as `POST /api/public/orders` (`order`, `payment`,
+`seller`). The delivery address and full phone number are never returned.
+
+Errors: `400 VALIDATION_ERROR` (`phoneLast4` missing or not 4 digits),
+`404 ORDER_NOT_FOUND` (wrong reference or wrong digits, same error for both),
+`429 RATE_LIMITED`.
