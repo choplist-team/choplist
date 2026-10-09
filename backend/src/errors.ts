@@ -23,6 +23,7 @@ export const ERROR_CODES = [
   'SOLD_OUT',
   'SELLER_NOT_FOUND',
   'ORDER_NOT_FOUND',
+  'ORDER_CANCELLED',
   'RATE_LIMITED',
   'INTERNAL_ERROR',
 ] as const;

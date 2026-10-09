@@ -41,6 +41,7 @@ Every error, on every route, has this shape:
 | 409 | `CUTOFF_PASSED` | Opening a draft whose cut-off is in the past (edit it first) |
 | 409 | `ORDERING_CLOSED` | The menu is closed, not yet open, or past its cut-off |
 | 409 | `SOLD_OUT` | Not enough stock for at least one item; nothing was taken. The message names it, e.g. `Not enough left: only 2 Jollof rice left` |
+| 409 | `ORDER_CANCELLED` | Marking a cancelled order paid |
 | 413 | `PAYLOAD_TOO_LARGE` | Request body is over 20 KB |
 | 429 | `RATE_LIMITED` | Too many orders or lookups from one network; wait (see the `RateLimit` header) |
 | 500 | `INTERNAL_ERROR` | Server bug or outage; details are logged, never returned |
@@ -301,6 +302,82 @@ Errors: `404 MENU_NOT_FOUND`, `409 MENU_NOT_OPEN` (it is still a draft).
 
 Note: a menu stays `open` after its cut-off until the seller closes it, but
 orders are refused once `cutoffAt` has passed.
+
+## Seller orders
+
+All routes need `Authorization: Bearer <token>` and a seller profile. Orders are
+addressed by their reference (what the seller sees in the bank transfer
+description), not case-sensitive. Another seller's order or menu is a `404`.
+
+Order status: **pending -> paid**, and **pending or paid -> cancelled**.
+Cancelling puts the order's portions back on sale. Payment is matched by hand;
+ChopList never moves money.
+
+The seller's order object (includes the customer's phone and address):
+
+```json
+{
+  "id": "6710c3e4e4b0a1b2c3d4e5f9",
+  "ref": "CL-7KQ2M",
+  "status": "pending",
+  "customer": { "name": "Ada Obi", "phone": "+2348091112222" },
+  "delivery": { "area": "Yaba", "address": "12 Herbert Macaulay Way, Yaba", "day": "2026-10-17" },
+  "note": "Extra pepper",
+  "lines": [{ "itemId": "6710b2d3e4b0a1b2c3d4e5f8", "name": "Jollof rice", "unitPrice": 3500, "qty": 2 }],
+  "total": 7000,
+  "paidAt": null,
+  "cancelledAt": null,
+  "createdAt": "2026-10-09T21:25:46.870Z"
+}
+```
+
+### GET /api/menus/:id/orders
+
+All orders for one of the seller's menus, newest first. Optional
+`?status=pending|paid|cancelled`.
+
+```
+GET /api/menus/6710b2d3e4b0a1b2c3d4e5f7/orders?status=pending
+Authorization: Bearer <token>
+```
+
+Response `200`:
+
+```json
+{ "orders": [ { "ref": "CL-7KQ2M", "status": "pending", "...": "seller order object" } ] }
+```
+
+Errors: `400 VALIDATION_ERROR` (unknown status), `404 MENU_NOT_FOUND`.
+
+### PATCH /api/orders/:ref/paid
+
+Marks a pending order paid. No body. Safe to repeat: a paid order is returned
+unchanged, with the same `paidAt`.
+
+```
+PATCH /api/orders/CL-7KQ2M/paid
+Authorization: Bearer <token>
+```
+
+Response `200`: the seller order object, `status: "paid"`, `paidAt` set.
+
+Errors: `404 ORDER_NOT_FOUND`, `409 ORDER_CANCELLED`.
+
+### PATCH /api/orders/:ref/cancel
+
+Cancels a pending or paid order and puts its portions back on sale (also after
+the menu has closed). No body. Safe to repeat: the stock comes back exactly
+once, even if several cancel requests arrive together. Refunding a paid order is
+done by the seller outside ChopList.
+
+```
+PATCH /api/orders/CL-7KQ2M/cancel
+Authorization: Bearer <token>
+```
+
+Response `200`: the seller order object, `status: "cancelled"`, `cancelledAt` set.
+
+Errors: `404 ORDER_NOT_FOUND`.
 
 ## Public routes (customers, no sign-in)
 
