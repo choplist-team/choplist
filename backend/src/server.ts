@@ -1,0 +1,32 @@
+import { createApp } from './app.js';
+import { parseEnv, type Config } from './config.js';
+
+let config: Config;
+try {
+  config = parseEnv(process.env);
+} catch (err) {
+  console.error(err instanceof Error ? err.message : err);
+  process.exit(1);
+}
+
+const app = createApp({ allowedOrigins: config.ALLOWED_ORIGINS });
+
+const server = app.listen(config.PORT, () => {
+  console.log(`ChopList API listening on port ${config.PORT}`);
+});
+
+// e.g. the port is already in use.
+server.on('error', (err) => {
+  console.error('Server failed to start:', err.message);
+  process.exit(1);
+});
+
+// Render sends SIGTERM before stopping the instance; Ctrl+C sends SIGINT.
+// Stop accepting new connections and let in-flight requests finish.
+function shutdown(signal: string) {
+  console.log(`${signal} received, shutting down`);
+  server.close(() => process.exit(0));
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
