@@ -180,6 +180,16 @@ describe.skipIf(!testDbUri)('reports on a real MongoDB', () => {
     });
   });
 
+  it('a menu with no orders: zeros and no areas', async () => {
+    const menu = await MenuModel.findById(menuId).lean();
+    const empty = await MenuModel.create({ ...menu, _id: undefined, status: 'draft', title: 'Empty' });
+    const prep = await get('seller_a', `/api/menus/${empty._id}/prep-sheet`);
+    expect(prep.body.items.every((i: { portions: number }) => i.portions === 0)).toBe(true);
+    expect(prep.body.totals).toEqual({ orders: 0, portions: 0, amount: 0 });
+    const delivery = await get('seller_a', `/api/menus/${empty._id}/delivery-list`);
+    expect(delivery.body).toMatchObject({ areas: [], totalOrders: 0 });
+  });
+
   it("isolation: another seller's menu is 404 for both reports", async () => {
     for (const report of ['prep-sheet', 'delivery-list']) {
       const res = await get('seller_b', `/api/menus/${menuId}/${report}`);

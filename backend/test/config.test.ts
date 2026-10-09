@@ -36,6 +36,13 @@ describe('parseEnv', () => {
     );
   });
 
+  it('rejects an origin that is not a URL', () => {
+    // "localhost:5173" with no scheme also fails (it parses with an origin of
+    // "null"); plain text cannot be parsed as a URL at all.
+    expect(() => parseEnv({ ...valid, ALLOWED_ORIGINS: 'localhost:5173' })).toThrow(/is not an origin/);
+    expect(() => parseEnv({ ...valid, ALLOWED_ORIGINS: 'choplist frontend' })).toThrow(/is not an origin/);
+  });
+
   it('rejects an empty ALLOWED_ORIGINS list', () => {
     expect(() => parseEnv({ ...valid, ALLOWED_ORIGINS: ' , ' })).toThrow(/at least one origin/);
   });
