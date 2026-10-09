@@ -5,6 +5,7 @@ import type { AuthProvider } from './auth/provider.js';
 import { errorHandler, notFound } from './middleware/error-handler.js';
 import { DEFAULT_RATE_LIMITS, type RateLimitSettings } from './middleware/rate-limit.js';
 import { createMenuRouter } from './menus/router.js';
+import { createOrderRouter } from './orders/router.js';
 import { createPublicRouter } from './public/router.js';
 import { createSellerRouter } from './sellers/router.js';
 
@@ -47,6 +48,7 @@ export function createApp(options: AppOptions): Express {
 
   app.use('/api/sellers', createSellerRouter(options.auth));
   app.use('/api/menus', createMenuRouter(options.auth));
+  app.use('/api/orders', createOrderRouter(options.auth));
   app.use('/api/public', createPublicRouter(options.rateLimits ?? DEFAULT_RATE_LIMITS));
 
   app.use(notFound);

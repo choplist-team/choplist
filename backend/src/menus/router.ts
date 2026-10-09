@@ -1,9 +1,12 @@
 import { Router, type Request } from 'express';
 import { Types, mongo } from 'mongoose';
+import { z } from 'zod';
 import { authenticate, currentSellerId, requireSeller } from '../auth/middleware.js';
 import type { AuthProvider } from '../auth/provider.js';
 import { AppError } from '../errors.js';
 import { MenuModel, type MenuDoc } from '../models/menu.js';
+import { ORDER_STATUSES, OrderModel } from '../models/order.js';
+import { toSellerOrder } from '../orders/seller-view.js';
 import { menuBodySchema, toMenuFields, toMenuResponse } from './schema.js';
 
 // A malformed id and someone else's menu both give the same 404, so a seller
@@ -26,6 +29,8 @@ async function loadOrNotFound(filter: ReturnType<typeof menuFilter>): Promise<Me
   if (!menu) throw notFound();
   return menu;
 }
+
+const orderListQuery = z.object({ status: z.enum(ORDER_STATUSES).optional() });
 
 function isDuplicateKey(err: unknown): boolean {
   return err instanceof mongo.MongoServerError && err.code === 11000;
@@ -50,6 +55,22 @@ export function createMenuRouter(auth: AuthProvider): Router {
 
   router.get('/:id', async (req, res) => {
     res.json(toMenuResponse(await loadOrNotFound(menuFilter(req))));
+  });
+
+  // All orders for one of my menus, newest first; optionally one status.
+  // The menu is checked first so another seller's menu id is a 404, not an
+  // empty list.
+  router.get('/:id/orders', async (req, res) => {
+    const filter = menuFilter(req);
+    const { status } = orderListQuery.parse(req.query);
+    await loadOrNotFound(filter);
+
+    const orders = await OrderModel.find({
+      sellerId: filter.sellerId,
+      menuId: filter._id,
+      ...(status ? { status } : {}),
+    }).sort({ createdAt: -1 });
+    res.json({ orders: orders.map(toSellerOrder) });
   });
 
   // Replace a draft. One conditional write: it only matches while the menu is
