@@ -161,9 +161,11 @@ Be upfront about these when presenting.
   Customers behind one mobile-network IP share a limit.
 - **The proxy hop count must match the host.** The rate limits count requests per
   customer address, which comes from `X-Forwarded-For`. `TRUST_PROXY_HOPS` says how
-  many proxies to skip. On Render the default of 1 was tested and is **wrong**: it
-  gave one customer several counters (it read a Cloudflare address), so customers
-  could share counters. The value for Render is set and checked as described below.
+  many proxies to skip. On Render the default of 1 and also 2 were tested and are
+  **wrong**: they gave one customer several counters (they read a proxy address),
+  so customers could share counters. **3 is correct on Render** (checked on
+  10 October 2026, see below). If Render changes its proxy layout the right number
+  could change, so repeat the check after any Render infrastructure change.
 - **A menu stays `open` after its cut-off** until the seller closes it. Orders are
   refused after `cutoffAt` regardless, and the public menu reports
   `acceptingOrders: false`.
@@ -178,23 +180,29 @@ Be upfront about these when presenting.
 - **Not yet verified:**
   - a real, signed Clerk token end to end (tests use a fake provider; the real
     middleware is only checked with no token and a junk token);
-  - a deployed instance on Render;
+  - the production database on Render (the deployment was checked against a
+    development database only: health, public routes, CORS, rate-limit address);
   - behaviour under real network failures between the two writes above (simulated
     in `failure-paths.db.test.ts`, not provoked for real).
 
-## Deploying on Render (suggested settings, not yet tried)
+## Deploying on Render
 
-- Root directory `backend`; build `npm ci && npm run build`; start `npm start`.
-- `TRUST_PROXY_HOPS`: Render sits behind Cloudflare, so the default of 1 reads a
-  proxy address instead of the customer's. Set it to `2`, then check from your
-  machine (the count is right when every request has the same `pk=` key, a
-  faked `X-Forwarded-For` does not change it, and a second network shows a
-  different key):
+- Root directory `backend`; build `npm ci --include=dev && npm run build`; start
+  `npm start`. `--include=dev` matters: if `NODE_ENV=production` is set during the
+  build, a plain `npm ci` leaves out TypeScript and the build fails.
+- **`TRUST_PROXY_HOPS=3`.** Render has several proxies in front of the app (Cloudflare
+  and Render's own), so the customer's address is the third from the app. Found by
+  testing the live service: at 1 and 2, one laptop got 3 and 6 different rate-limit
+  keys in a few requests; at 3 every request had the same key, a faked
+  `X-Forwarded-For` changed nothing, and the key was the hash of the laptop's real
+  address. Check it from your machine:
 
       1..10 | % { curl.exe -s -i https://<name>.onrender.com/api/public/orders/CL-AAAAA?phoneLast4=1234 | Select-String 'ratelimit-policy' }
 
-  If the keys still vary, try 3 and repeat; if a faked header changes the key, the
-  number is too high.
+  The number is right when all ten show the same `pk=` key, the key does not change
+  when you add `-H "X-Forwarded-For: 1.1.1.1"`, and a second network (a phone
+  hotspot) shows a different key. Many keys means the number is too low; a key that
+  follows the faked header means it is too high.
 - Environment (dashboard): `MONGO_URI`, `CLERK_SECRET_KEY`, `CLERK_PUBLISHABLE_KEY`,
   `ALLOWED_ORIGINS=https://choplist.onrender.com` (add `http://localhost:5173` if
   local frontends should work), and a Node version of 20.19 or newer.
