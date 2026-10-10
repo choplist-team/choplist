@@ -59,8 +59,29 @@ walks through opening the link, ordering, looking the order up, and the sold-out
 and wrong-area errors, printing each response. It places 3 orders each run (the
 order limit is 20 per 10 minutes per IP).
 
-Seller routes (profile, menus, paid/cancel, reports) need a real Clerk token, so
-they cannot be tried this way until the frontend can sign in. The tests cover them.
+Seller routes (profile, menus, paid/cancel, reports) need a real Clerk token. Until
+the frontend can sign in, use the login test page below. The tests cover these
+routes with a fake sign-in.
+
+### Try the seller routes with a real Clerk login
+
+A small local page that signs in through Clerk and calls the API with the real
+session token, with buttons for `GET` / `PUT /sellers/me` and a box for any other
+request. Needs `CLERK_PUBLISHABLE_KEY` in `.env` (it never reads the secret key).
+
+    # terminal 1
+    npm run dev
+    # terminal 2
+    npm run clerk:login-test
+
+Open http://localhost:5173, click Sign up (first time) or Sign in, then
+`GET /sellers/me`: a signed-in user with no shop gets 403 `PROFILE_REQUIRED`; after
+`PUT /sellers/me` they get 200. "Show token claims" prints the `azp` claim, which
+must be one of the API's `ALLOWED_ORIGINS` (`http://localhost:5173` by default)
+or the API answers 401. Stop the frontend dev server first if it uses port 5173.
+To call the deployed API instead, set `LOGIN_TEST_API=https://<name>.onrender.com/api`
+and add `http://localhost:5173` to that service's `ALLOWED_ORIGINS`.
+Anything you create goes into whichever database that API uses.
 
 ## Scripts
 
@@ -73,6 +94,7 @@ they cannot be tried this way until the frontend can sign in. The tests cover th
 | `npm test` | All tests (see below) |
 | `npm run test:coverage` | Tests with a coverage report |
 | `npm run seed:demo` | Demo seller and open menu |
+| `npm run clerk:login-test` | Local page to sign in with Clerk and call the API with the real token |
 
 ## Tests
 
