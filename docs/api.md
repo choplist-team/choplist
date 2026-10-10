@@ -5,6 +5,9 @@ before or alongside the code, so frontend can build against it.
 
 Base path: /api (the one exception is `GET /health`, which is at the root).
 
+Building the frontend? [frontend-guide.md](frontend-guide.md) shows how to call these
+routes from React (a fixed API client, the customer order flow, Clerk sign-in).
+
 All request and response bodies are JSON. Successful responses always have a
 JSON body (no empty 204s), so `response.json()` is always safe to call.
 
