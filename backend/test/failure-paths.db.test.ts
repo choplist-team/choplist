@@ -103,8 +103,11 @@ describe.skipIf(!testDbUri)('known-limit failure paths on a real MongoDB', () =>
     expect(await left(menuId)).toBe(2);
 
     const log = vi.spyOn(console, 'error').mockImplementation(() => {});
-    vi.spyOn(MenuModel, 'updateOne').mockReturnValueOnce(
-      Promise.reject(new Error('database went away')) as unknown as ReturnType<typeof MenuModel.updateOne>,
+    // Create the rejection only when updateOne is called (and immediately
+    // awaited). Promise.reject() up front would sit unhandled until the
+    // request reached it, which Node reports as an unhandled rejection.
+    vi.spyOn(MenuModel, 'updateOne').mockImplementationOnce(
+      (() => Promise.reject(new Error('database went away'))) as unknown as typeof MenuModel.updateOne,
     );
 
     const res = await request(app).patch(`/api/orders/${order.ref}/cancel`).set('Authorization', bearer('seller_a'));
