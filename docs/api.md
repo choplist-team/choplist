@@ -3,10 +3,27 @@
 Backend owns this file. Every route gets an example request and response here
 before or alongside the code, so frontend can build against it.
 
-Base path: /api
+Base path: /api (the one exception is `GET /health`, which is at the root).
 
 All request and response bodies are JSON. Successful responses always have a
 JSON body (no empty 204s), so `response.json()` is always safe to call.
+
+## Conventions
+
+- **Money** is whole naira, as integers: `3500` means ₦3,500. There are no kobo
+  and no decimals anywhere.
+- **Timestamps** (`cutoffAt`, `createdAt`, `paidAt`, ...) are UTC instants in ISO
+  format, e.g. `2026-10-16T17:00:00.000Z`. Show them in Africa/Lagos on the client.
+  When *sending* one (`cutoffAt`), include a time zone: `...Z` or `...+01:00`.
+- **Delivery days** are calendar dates as `YYYY-MM-DD` strings, in Lagos time
+  (`2026-10-17`). They are not instants, so they never shift a day.
+- **Phone numbers and account numbers** are strings. Send them as typed
+  (`0803 123 4567`); phones are stored as `+234XXXXXXXXXX`. A JSON number loses
+  the leading `0` and is rejected.
+- **Ids** are 24-character strings, e.g. `6710b2d3e4b0a1b2c3d4e5f7`.
+- **CORS:** only the origins listed in the server's `ALLOWED_ORIGINS` can call the
+  API from a browser. Requests may carry `Authorization` and `Content-Type`.
+- **Bodies** over 20 KB are refused (`PAYLOAD_TOO_LARGE`).
 
 ## Errors
 
@@ -46,7 +63,9 @@ Every error, on every route, has this shape:
 | 429 | `RATE_LIMITED` | Too many orders or lookups from one network; wait (see the `RateLimit` header) |
 | 500 | `INTERNAL_ERROR` | Server bug or outage; details are logged, never returned |
 
-More codes are added as routes are built.
+Every code the API can return is in this table. A route's own "Errors" line lists
+the ones that route can produce; any route can also return `INVALID_JSON`,
+`PAYLOAD_TOO_LARGE` and `INTERNAL_ERROR`.
 
 ## Seller authentication
 
@@ -583,3 +602,37 @@ Response `200`: same body as `POST /api/public/orders` (`order`, `payment`,
 Errors: `400 VALIDATION_ERROR` (`phoneLast4` missing or not 4 digits),
 `404 ORDER_NOT_FOUND` (wrong reference or wrong digits, same error for both),
 `429 RATE_LIMITED`.
+
+## Typical flows
+
+### A seller signs up and sets up a shop
+
+1. Clerk signs the seller in (email and password never reach this API).
+2. `GET /api/sellers/me` with the token. `403 PROFILE_REQUIRED` means show the
+   onboarding form; `200` means go to the dashboard.
+3. `PUT /api/sellers/me` with the shop details: `201` and the profile, including
+   the shop link (`slug`).
+4. `POST /api/menus` (a draft), `PUT /api/menus/:id` to adjust it, then
+   `POST /api/menus/:id/open`.
+5. Share the shop link built from the `slug` (the frontend decides the URL shape);
+   the page loads it through `GET /api/public/menu/:slug`.
+
+### A customer orders
+
+1. `GET /api/public/menu/:slug`. If `menu` is `null` or `acceptingOrders` is
+   `false`, show that ordering is closed.
+2. `POST /api/public/orders`. On `201`, show `payment.instructions` and the
+   reference. On `409 SOLD_OUT`, show `error.message` (it says what is left) and
+   reload the menu.
+3. Later: `GET /api/public/orders/:ref?phoneLast4=1234` to see whether the seller
+   has marked it paid.
+
+### The seller runs the week
+
+1. `GET /api/menus/:id/orders?status=pending` to see new orders.
+2. Match payments to references in the bank app, then
+   `PATCH /api/orders/:ref/paid`. Cancel unpaid ones with
+   `PATCH /api/orders/:ref/cancel`, which puts the portions back on sale.
+3. After the cut-off: `GET /api/menus/:id/prep-sheet` (what to cook) and
+   `GET /api/menus/:id/delivery-list` (who gets what, by area), then
+   `POST /api/menus/:id/close`.
