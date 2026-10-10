@@ -55,6 +55,15 @@ describe('parseEnv', () => {
     ).toThrow(/must start with sk_[\s\S]*must start with pk_/);
   });
 
+  it('TRUST_PROXY_HOPS defaults to 1, accepts 0 to 5, and rejects anything else', () => {
+    expect(parseEnv(valid).TRUST_PROXY_HOPS).toBe(1);
+    expect(parseEnv({ ...valid, TRUST_PROXY_HOPS: '2' }).TRUST_PROXY_HOPS).toBe(2);
+    expect(parseEnv({ ...valid, TRUST_PROXY_HOPS: '0' }).TRUST_PROXY_HOPS).toBe(0);
+    for (const bad of ['-1', '6', '1.5', 'two']) {
+      expect(() => parseEnv({ ...valid, TRUST_PROXY_HOPS: bad })).toThrow(/TRUST_PROXY_HOPS/);
+    }
+  });
+
   it('rejects a non-numeric PORT', () => {
     expect(() => parseEnv({ ...valid, PORT: 'abc' })).toThrow(/PORT/);
   });

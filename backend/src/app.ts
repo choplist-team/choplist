@@ -19,6 +19,8 @@ export type AppOptions = {
   auth: AuthProvider;
   // Tests use small limits to exercise them, large ones to stay out of the way.
   rateLimits?: RateLimitSettings;
+  // Proxies in front of the app. Default 1; Render has more (see README).
+  trustProxyHops?: number;
 };
 
 // Builds the app without listening on a port or connecting to a database,
@@ -26,10 +28,15 @@ export type AppOptions = {
 export function createApp(options: AppOptions): Express {
   const app = express();
 
-  // Render puts one proxy in front of the app. Trusting exactly one hop makes
-  // req.ip the real client (from X-Forwarded-For), which the rate limits need.
-  // Trusting more hops than exist would let a client fake its IP.
-  app.set('trust proxy', 1);
+  // The rate limits count requests per client address, which behind a proxy
+  // comes from X-Forwarded-For. Each proxy appends the address it received the
+  // request from, so the real client is the entry just before the proxies we
+  // own. This number is how many proxies to skip:
+  //   too low  -> req.ip is a proxy address shared by many customers
+  //   too high -> req.ip is read from a header the client wrote, so it can
+  //               fake its address and dodge the limits
+  // The right value depends on the host, so it is a setting (TRUST_PROXY_HOPS).
+  app.set('trust proxy', options.trustProxyHops ?? 1);
 
   // Security headers (nosniff, frame protection, etc.) and no X-Powered-By.
   app.use(helmet());

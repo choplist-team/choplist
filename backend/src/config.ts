@@ -14,6 +14,10 @@ function isOrigin(value: string): boolean {
 const EnvSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(5000),
 
+  // How many proxies sit between the internet and this app (see app.ts). The
+  // rate limits need it to find the real customer address. 0 = none (local).
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(1),
+
   MONGO_URI: z
     .string({ error: 'MONGO_URI is required' })
     .regex(/^mongodb(\+srv)?:\/\/.+/, 'MONGO_URI must start with mongodb:// or mongodb+srv://'),

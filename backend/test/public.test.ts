@@ -68,3 +68,46 @@ describe('public routes without a database', () => {
     expect(malformed.body.error.code).toBe('ORDER_NOT_FOUND');
   });
 });
+
+// Behind two proxies (e.g. Cloudflare then Render's load balancer) the request
+// reaches the app with X-Forwarded-For: "<client>, <proxy 1>" and the socket
+// peer is proxy 2. The setting decides which of those is "the client".
+describe('TRUST_PROXY_HOPS decides which address the rate limit counts', () => {
+  function appWith(hops: number) {
+    return createApp({
+      allowedOrigins: ['http://localhost:5173'],
+      auth: fakeAuth,
+      rateLimits: { windowMs: 60_000, ordersPerWindow: 1, lookupsPerWindow: 100 },
+      trustProxyHops: hops,
+    });
+  }
+  const post = (app: ReturnType<typeof createApp>, forwarded: string) =>
+    request(app).post('/api/public/orders').set('X-Forwarded-For', forwarded).send({});
+
+  it('1 hop: the entry added by the nearest proxy is the client, so two customers behind one edge share a counter (the bug seen on Render)', async () => {
+    const app = appWith(1);
+    expect((await post(app, '198.51.100.1, 104.16.0.9')).status).toBe(400); // customer A via edge 104.16.0.9
+    expect((await post(app, '198.51.100.2, 104.16.0.9')).status).toBe(429); // customer B shares A's counter
+  });
+
+  it('2 hops: the real customer is read from the chain, so each customer has their own counter', async () => {
+    const app = appWith(2);
+    expect((await post(app, '198.51.100.1, 104.16.0.9')).status).toBe(400);
+    expect((await post(app, '198.51.100.2, 104.16.0.9')).status).toBe(400); // different customer, own counter
+    expect((await post(app, '198.51.100.1, 104.16.0.77')).status).toBe(429); // same customer via another edge: same counter
+  });
+
+  it('2 hops: the same customer through different edges, with a faked entry on the left, keeps one counter', async () => {
+    const app = appWith(2);
+    expect((await post(app, '1.1.1.1, 198.51.100.1, 104.16.0.9')).status).toBe(400);
+    // Same real customer (198.51.100.1), another edge, a different faked left entry.
+    expect((await post(app, '2.2.2.2, 198.51.100.1, 104.16.0.77')).status).toBe(429);
+  });
+
+  it('too many hops (3): the client-written entry is believed, so a client can dodge the limit', async () => {
+    const app = appWith(3);
+    expect((await post(app, '1.1.1.1, 198.51.100.1, 104.16.0.9')).status).toBe(400);
+    // Same customer, different faked entry: a fresh counter. This is why the number must not be set higher than the real proxy count.
+    expect((await post(app, '2.2.2.2, 198.51.100.1, 104.16.0.9')).status).toBe(400);
+  });
+});
