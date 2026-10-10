@@ -31,6 +31,7 @@ You need Node 20.19 or newer, a MongoDB database, and a Clerk application.
    | `CLERK_PUBLISHABLE_KEY` | Same page, starts with `pk_` |
    | `ALLOWED_ORIGINS` | Frontend origins, comma separated, no trailing slash (`http://localhost:5173`) |
    | `PORT` | Defaults to 5000 |
+   | `TRUST_PROXY_HOPS` | Proxies in front of the API, default 1. Leave alone locally. On Render see "Deploying on Render" |
    | `MONGO_URI_TEST` | Only for tests, see below |
 
    The server checks all of these at startup and refuses to start, naming the
@@ -158,8 +159,11 @@ Be upfront about these when presenting.
 - **Rate-limit counts are in memory.** They reset on restart and are not shared
   between server instances; several instances would need a shared store.
   Customers behind one mobile-network IP share a limit.
-- **`trust proxy` assumes one proxy hop** (Render). After the first deploy,
-  confirm `req.ip` is the customer's address, not Render's.
+- **The proxy hop count must match the host.** The rate limits count requests per
+  customer address, which comes from `X-Forwarded-For`. `TRUST_PROXY_HOPS` says how
+  many proxies to skip. On Render the default of 1 was tested and is **wrong**: it
+  gave one customer several counters (it read a Cloudflare address), so customers
+  could share counters. The value for Render is set and checked as described below.
 - **A menu stays `open` after its cut-off** until the seller closes it. Orders are
   refused after `cutoffAt` regardless, and the public menu reports
   `acceptingOrders: false`.
@@ -181,6 +185,16 @@ Be upfront about these when presenting.
 ## Deploying on Render (suggested settings, not yet tried)
 
 - Root directory `backend`; build `npm ci && npm run build`; start `npm start`.
+- `TRUST_PROXY_HOPS`: Render sits behind Cloudflare, so the default of 1 reads a
+  proxy address instead of the customer's. Set it to `2`, then check from your
+  machine (the count is right when every request has the same `pk=` key, a
+  faked `X-Forwarded-For` does not change it, and a second network shows a
+  different key):
+
+      1..10 | % { curl.exe -s -i https://<name>.onrender.com/api/public/orders/CL-AAAAA?phoneLast4=1234 | Select-String 'ratelimit-policy' }
+
+  If the keys still vary, try 3 and repeat; if a faked header changes the key, the
+  number is too high.
 - Environment (dashboard): `MONGO_URI`, `CLERK_SECRET_KEY`, `CLERK_PUBLISHABLE_KEY`,
   `ALLOWED_ORIGINS=https://choplist.onrender.com` (add `http://localhost:5173` if
   local frontends should work), and a Node version of 20.19 or newer.
