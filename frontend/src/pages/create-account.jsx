@@ -1,4 +1,4 @@
-import { ChopListLogo } from "@/choplist-logo";
+import { ChopListLogo } from "@/components/choplist-logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
