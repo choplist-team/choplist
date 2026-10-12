@@ -29,7 +29,7 @@ export default function Home() {
         </Link>
 
         <p className="text-muted-foreground text-sm mt-4 text-center">
-          Already a seller?{""}
+          Already a seller?{" "}
           <Link to="/login" className="text-primary font-semibold">
             Sign in
           </Link>

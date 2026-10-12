@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
+    "@clerk/react": "^6.17.8",
     "@clerk/react-router": "^3.6.31",
     "@fontsource-variable/geist": "^5.3.0",
     "@tailwindcss/vite": "^4.3.3",
