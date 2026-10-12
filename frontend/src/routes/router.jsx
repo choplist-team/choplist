@@ -5,6 +5,9 @@ import CustomerMenu from "../pages/customer/CustomerMenu.jsx";
 import CustomerCheckout from "@/pages/customer/CustomerCheckout.jsx";
 import CustomerConfirmation from "@/pages/customer/CustomerConfirmation.jsx";
 import OrderLookup from "@/pages/customer/OrderLookup.jsx";
+import CreateAccount from "@/pages/seller/sign-up.jsx";
+import Login from "@/pages/seller/login.jsx";
+import SellerOnboarding from "../pages/seller/onboarding.jsx";
 
 export const router = createBrowserRouter([
   {
@@ -15,6 +18,19 @@ export const router = createBrowserRouter([
         index: true,
         element: <Home />,
       },
+      {
+        path: "seller/sign-up/*",
+        element: <CreateAccount />,
+      },
+      {
+        path: "seller/sign-in/*",
+        element: <Login />,
+      },
+
+      {
+  path: "seller/onboarding",
+  element: <SellerOnboarding />,
+},
     ],
   },
 

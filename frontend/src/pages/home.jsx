@@ -22,7 +22,7 @@ export default function Home() {
           Your weekly menu, orders, payments and delivery all in one seller
           workspace.
         </p>
-        <Link to="/create-account">
+        <Link to="/seller/sign-up">
           <Button className="mt-8 w-full py-6 text-primary-foreground">
             Get started <ArrowRight />
           </Button>
@@ -30,7 +30,7 @@ export default function Home() {
 
         <p className="text-muted-foreground text-sm mt-4 text-center">
           Already a seller?{" "}
-          <Link to="/login" className="text-primary font-semibold">
+          <Link to="/seller/sign-in" className="text-primary font-semibold">
             Sign in
           </Link>
         </p>

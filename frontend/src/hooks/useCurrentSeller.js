@@ -8,5 +8,9 @@ export const useCurrentSeller = () => {
     queryKey: ["current-seller"],
     queryFn: () => getCurrentSeller(getToken),
     enabled: isLoaded && isSignedIn,
+    retry: (failureCount, error) => {
+      if (error?.code === "PROFILE_REQUIRED") return false;
+      return failureCount < 3;
+    },
   });
 };
