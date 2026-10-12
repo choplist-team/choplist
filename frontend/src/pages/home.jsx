@@ -1,6 +1,6 @@
-import { ChopListLogo } from "@/choplist-logo";
+import { ChopListLogo } from "@/components/choplist-logo";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Link2 } from "lucide-react";
+import { ArrowRight, Search } from "lucide-react";
 import { Link } from "react-router-dom";
 
 export default function Home() {
@@ -34,20 +34,18 @@ export default function Home() {
             Sign in
           </Link>
         </p>
+        <div className="mt-5 rounded-lg border border-border bg-soft-green px-4 py-3 text-center">
+          <Link
+            to="/order-lookup"
+            className="inline-flex items-center justify-center gap-2 text-sm font-semibold text-primary hover:underline"
+          >
+            <Search size={16} />
+            Find my order
+          </Link>
 
-        <div className="mt-5 flex gap-4 border rounded-lg bg-soft-green px-2 py-2">
-          <Link2 className="mt-1 shrink-0 text-primary" />
-
-          <div>
-            <p className="font-semibold text-primary mt-1 text-sm">
-              Ordering food?
-            </p>
-
-            <p className="mt-1 leading-[1] text-sm text-primary/60">
-              Open the menu link your seller shared. No app download or sign-up
-              needed.
-            </p>
-          </div>
+          <p className="mt-2 text-sm leading-relaxed text-primary/70">
+            Already placed an order?
+          </p>
         </div>
       </div>
     </main>
