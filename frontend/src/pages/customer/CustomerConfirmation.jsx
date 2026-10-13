@@ -8,7 +8,7 @@ import {
   Search,
 } from "lucide-react";
 
-import CustomerHeader from "@/components/customer/CustomerHeader";
+import CustomerHeader from "@/components/customer/Header";
 import { Button } from "@/components/ui/button";
 
 const formatPrice = (price) =>

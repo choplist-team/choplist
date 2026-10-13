@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, ClipboardList } from "lucide-react";
 
 import { usePlaceOrder } from "@/hooks/usePlaceOrder";
-import CustomerHeader from "@/components/customer/CustomerHeader";
+import CustomerHeader from "@/components/customer/Header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";

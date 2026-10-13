@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { AlertCircle, LoaderCircle, RefreshCw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import CustomerHeader from "@/components/customer/CustomerHeader";
+import CustomerHeader from "@/components/customer/Header";
 import MenuItemCard from "@/components/customer/MenuItemCard";
 import OrderSummary from "@/components/customer/OrderSummary";
 import { useGetShop } from "@/hooks/useGetShop";
