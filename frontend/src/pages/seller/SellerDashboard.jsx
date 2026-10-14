@@ -1,14 +1,14 @@
 import { useState } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Check, Copy, Send } from "lucide-react";
 import { ApiError } from "@/api/api-client";
 import SellerHeader from "@/components/seller/Header";
+import SellerBottomNav from "@/components/seller/BottomNav";
+import { ChopListLogo } from "@/components/choplist-logo";
 import { useCurrentSeller } from "@/hooks/useCurrentSeller";
 import { useGetMenus } from "@/hooks/useGetMenus";
 import { useOpenMenu } from "@/hooks/use-open-menu";
 import { useCloseMenu } from "@/hooks/use-close-menu";
-import { ChopListLogo } from "@/components/choplist-logo";
-import SellerBottomNav from "@/components/seller/BottomNav";
 
 const formatPrice = (amount) =>
   new Intl.NumberFormat("en-NG", {
@@ -141,12 +141,11 @@ export default function SellerDashboard() {
 
   const isBusy = openMenuMutation.isPending || closeMenuMutation.isPending;
 
-  if (
-    sellerError instanceof ApiError &&
-    sellerError.code === "PROFILE_REQUIRED"
-  ) {
-    return <Navigate to="/seller/onboarding" replace />;
-  }
+  const needsProfile =
+    sellerError instanceof ApiError && sellerError.code === "PROFILE_REQUIRED";
+
+  const menusNeedProfile =
+    menusError instanceof ApiError && menusError.code === "PROFILE_REQUIRED";
 
   if (isSellerPending) {
     return (
@@ -162,12 +161,12 @@ export default function SellerDashboard() {
     );
   }
 
-  if (isSellerError) {
+  if (isSellerError && !needsProfile) {
     return (
       <main className="min-h-[100dvh] bg-background px-4 py-8">
         <div className="mx-auto w-full max-w-[420px] space-y-5">
           <ErrorState
-            message={sellerError.message || "Unable to load your profile."}
+            message={sellerError?.message || "Unable to load your profile."}
             onRetry={refetchSeller}
           />
         </div>
@@ -261,7 +260,7 @@ export default function SellerDashboard() {
   return (
     <main className="min-h-[100dvh] bg-background px-4 py-6 pb-28">
       <div className="mx-auto flex w-full max-w-[420px] flex-col">
-        <SellerHeader businessName={seller.businessName} />
+        <SellerHeader businessName={seller?.businessName || "Your shop"} />
 
         <section className="mt-8">
           <h1 className="text-3xl font-semibold tracking-tight text-foreground">
@@ -273,35 +272,69 @@ export default function SellerDashboard() {
           </p>
         </section>
 
-        {areMenusPending ? (
-          <div className="mt-8">
-            <LoadingState />
-          </div>
-        ) : areMenusError ? (
-          <div className="mt-8">
-            <ErrorState
-              message={menusError.message || "Unable to load your menus."}
-              onRetry={refetchMenus}
-            />
-          </div>
-        ) : !activeMenu ? (
-          <section className="mt-12 rounded-xl border border-border bg-card p-6 text-center">
-            <h2 className="text-lg font-semibold text-foreground">
-              No menu yet
+        {needsProfile && (
+          <section className="mt-6 rounded-xl border border-border bg-card p-4">
+            <h2 className="font-semibold text-foreground">
+              Complete your shop profile
             </h2>
 
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Create your first menu to add dishes, set your delivery schedule,
-              and start accepting orders.
+              You skipped setup. You can complete your business and payment
+              details whenever you're ready.
             </p>
 
             <button
               type="button"
-              onClick={() => navigate("/seller/menu/new")}
-              className="mt-5 w-full rounded-lg bg-primary px-4 py-3 font-semibold text-primary-foreground hover:opacity-90"
+              onClick={() => navigate("/seller/profile/edit")}
+              className="mt-4 w-full rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground hover:opacity-90"
             >
-              Create your first menu
+              Complete profile
             </button>
+          </section>
+        )}
+
+        {areMenusPending ? (
+          <div className="mt-8">
+            <LoadingState />
+          </div>
+        ) : areMenusError && !menusNeedProfile ? (
+          <div className="mt-8">
+            <ErrorState
+              message={menusError?.message || "Unable to load your menus."}
+              onRetry={refetchMenus}
+            />
+          </div>
+        ) : !activeMenu ? (
+          <section className="mt-8 rounded-xl border border-border bg-card p-6 text-center">
+            <h2 className="text-lg font-semibold text-foreground">
+              {needsProfile ? "Your dashboard is ready" : "No menu yet"}
+            </h2>
+
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              {needsProfile
+                ? "Your account is ready. Complete your profile when convenient, then create your first menu to start accepting orders."
+                : "Create your first menu to add dishes, set your delivery schedule, and start accepting orders."}
+            </p>
+
+            {!needsProfile && (
+              <button
+                type="button"
+                onClick={() => navigate("/seller/menu/new")}
+                className="mt-5 w-full rounded-lg bg-primary px-4 py-3 font-semibold text-primary-foreground hover:opacity-90"
+              >
+                Create your first menu
+              </button>
+            )}
+
+            {needsProfile && (
+              <button
+                type="button"
+                onClick={() => navigate("/seller/profile/edit")}
+                className="mt-5 w-full rounded-lg border border-border px-4 py-3 font-semibold text-foreground hover:bg-muted"
+              >
+                Update your profile
+              </button>
+            )}
           </section>
         ) : (
           <>
@@ -450,7 +483,7 @@ export default function SellerDashboard() {
                   type="button"
                   onClick={handleCloseMenu}
                   disabled={isBusy}
-                  className="mt-3 w-full rounded-lg border border-border px-4 py-3 text-sm font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                  className="mt-8 w-full rounded-lg border border-border px-4 py-3 text-sm font-semibold text-destructive/70 hover:border-destructive disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {closeMenuMutation.isPending
                     ? "Closing menu..."

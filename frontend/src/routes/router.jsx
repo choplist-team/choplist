@@ -17,6 +17,7 @@ import EditMenu from "../pages/seller/EditMenu.jsx";
 
 import ProtectedRoute from "./ProtectedRoute.jsx";
 import NotFound from "./NotFound.jsx";
+import EditProfile from "@/pages/seller/EditProfile.jsx";
 
 export const router = createBrowserRouter([
   {
@@ -60,6 +61,10 @@ export const router = createBrowserRouter([
           {
             path: "seller/orders",
             element: <SellerOrders />,
+          },
+          {
+            path: "seller/profile/edit",
+            element: <EditProfile />,
           },
         ],
       },
