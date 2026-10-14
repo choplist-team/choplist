@@ -59,7 +59,7 @@ export default function CustomerConfirmation() {
               className="flex items-center justify-center gap-2 text-sm font-semibold text-primary hover:underline"
             >
               <Search size={16} />
-              Look up an order
+              Track your order
             </Link>
 
             <Button onClick={() => navigate(`/shop/${slug ?? ""}`)}>
@@ -223,7 +223,7 @@ export default function CustomerConfirmation() {
           className="mt-4 flex items-center justify-center gap-2 text-sm font-semibold text-primary hover:underline"
         >
           <Search size={16} />
-          Look up an order
+          Track your order
         </Link>
 
         <Button

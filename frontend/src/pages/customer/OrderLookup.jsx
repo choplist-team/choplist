@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { Search, ClipboardList } from "lucide-react";
+import { Search, ClipboardList, ArrowLeft } from "lucide-react";
 
 import CustomerHeader from "@/components/customer/Header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useLookupOrder } from "@/hooks/useLookupOrder";
+import { useNavigate } from "react-router-dom";
 
 const formatPrice = (price) =>
   new Intl.NumberFormat("en-NG", {
@@ -18,6 +19,8 @@ export default function OrderLookup() {
   const [reference, setReference] = useState("");
   const [phoneLast4, setPhoneLast4] = useState("");
   const [submitted, setSubmitted] = useState(null);
+
+  const navigate = useNavigate();
 
   const lookup = useLookupOrder(
     submitted?.reference ?? "",
@@ -107,6 +110,16 @@ export default function OrderLookup() {
             {lookup.isFetching ? "Searching..." : "Find my order"}
           </Button>
         </form>
+
+        <Button
+          type="button"
+          variant="outline"
+          className="mt-5 w-full rounded-xl"
+          onClick={() => navigate(-1)}
+        >
+          <ArrowLeft size={18} />
+          Back
+        </Button>
 
         {lookup.isError && (
           <div

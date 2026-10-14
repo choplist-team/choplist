@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "@clerk/react";
-import { Navigate, useNavigate } from "react-router-dom";
+import { Link, Navigate, useNavigate } from "react-router-dom";
 import { ApiError } from "@/api/api-client";
 import { ChopListLogo } from "@/components/choplist-logo";
 import { useCurrentSeller } from "@/hooks/useCurrentSeller";
@@ -94,8 +94,10 @@ export default function SellerOnboarding() {
     return <LoadingScreen message="Loading your seller profile..." />;
   }
 
-  if (seller) {
-    return <Navigate to="/seller/dashboard" replace />;
+  {
+    if (seller) {
+      return <Navigate to="/seller/dashboard" replace />;
+    }
   }
 
   if (profileError && !needsOnboarding) {
@@ -142,53 +144,63 @@ export default function SellerOnboarding() {
           <p className="text-sm font-medium text-primary">
             Let&apos;s get started
           </p>
+        </div>
 
-          <h1 className="mt-2 text-2xl font-bold text-foreground">
+        <div className="mt-2 flex items-center justify-between">
+          <h1 className=" text-2xl font-bold text-foreground">
             Set up your shop
           </h1>
+          <Link
+            to="/seller/dashboard"
+            className="text-sm text-foreground font-semibold hover:underline"
+          >
+            SKIP
+          </Link>
         </div>
 
         <form onSubmit={handleSubmit} className="mt-8 space-y-5">
-          <div className="space-y-2">
-            <label
-              htmlFor="businessName"
-              className="text-sm font-medium text-foreground"
-            >
-              Business name
-            </label>
+          <div className="space-y-4 rounded-xl border border-border bg-card p-4">
+            <div className="space-y-2">
+              <label
+                htmlFor="businessName"
+                className="text-sm font-medium text-foreground"
+              >
+                Business name
+              </label>
 
-            <input
-              id="businessName"
-              name="businessName"
-              type="text"
-              autoComplete="organization"
-              placeholder="Mama T's Kitchen"
-              value={formData.businessName}
-              onChange={handleChange}
-              required
-              className="w-full rounded-lg border border-border bg-card px-3 py-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-primary"
-            />
-          </div>
+              <input
+                id="businessName"
+                name="businessName"
+                type="text"
+                autoComplete="organization"
+                placeholder="Mama T's Kitchen"
+                value={formData.businessName}
+                onChange={handleChange}
+                required
+                className="w-full rounded-lg border border-border bg-background px-3 py-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-primary"
+              />
+            </div>
 
-          <div className="space-y-2">
-            <label
-              htmlFor="phone"
-              className="text-sm font-medium text-foreground"
-            >
-              Phone number
-            </label>
+            <div className="space-y-2">
+              <label
+                htmlFor="phone"
+                className="text-sm font-medium text-foreground"
+              >
+                Phone number
+              </label>
 
-            <input
-              id="phone"
-              name="phone"
-              type="tel"
-              autoComplete="tel"
-              placeholder="08031234567"
-              value={formData.phone}
-              onChange={handleChange}
-              required
-              className="w-full rounded-lg border border-border bg-card px-3 py-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-primary"
-            />
+              <input
+                id="phone"
+                name="phone"
+                type="tel"
+                autoComplete="tel"
+                placeholder="08031234567"
+                value={formData.phone}
+                onChange={handleChange}
+                required
+                className="w-full rounded-lg border border-border bg-background px-3 py-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-primary"
+              />
+            </div>
           </div>
 
           <div className="space-y-4 rounded-xl border border-border bg-card p-4">
