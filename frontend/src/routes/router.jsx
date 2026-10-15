@@ -18,6 +18,8 @@ import EditMenu from "../pages/seller/EditMenu.jsx";
 import ProtectedRoute from "./ProtectedRoute.jsx";
 import NotFound from "./NotFound.jsx";
 import EditProfile from "@/pages/seller/EditProfile.jsx";
+import Prep from "@/pages/seller/Prep.jsx";
+import Delivery from "@/pages/seller/Delivery.jsx";
 
 export const router = createBrowserRouter([
   {
@@ -65,6 +67,14 @@ export const router = createBrowserRouter([
           {
             path: "seller/profile/edit",
             element: <EditProfile />,
+          },
+          {
+            path: "seller/prep",
+            element: <Prep />,
+          },
+          {
+            path: "seller/delivery",
+            element: <Delivery />,
           },
         ],
       },

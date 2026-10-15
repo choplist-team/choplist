@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useCurrentSeller } from "@/hooks/useCurrentSeller";
 import { useSaveSellerProfile } from "@/hooks/useSaveSellerProfile";
 import { ApiError } from "@/api/api-client";
@@ -200,7 +200,9 @@ function EditProfileForm({ seller }) {
     <main className="min-h-[100dvh] bg-background">
       <div className="mx-auto flex min-h-[100dvh] w-full max-w-[420px] flex-col pb-28">
         <header className="flex items-center justify-between">
-          <ChopListLogo />
+          <Link to="/">
+            <ChopListLogo />
+          </Link>
           <button
             type="button"
             onClick={() => navigate(-1)}
