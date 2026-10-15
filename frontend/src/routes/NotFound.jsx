@@ -7,7 +7,7 @@ export default function NotFound() {
 
   return (
     <main className="min-h-[100dvh] bg-background px-4 py-8">
-      <div className="mx-auto flex min-h-[calc(100dvh-4rem)] w-full max-w-[420px] flex-col">
+      <div className="mx-auto flex min-h-[calc(100dvh-4rem)] w-full max-w-[420px] flex-col md:max-w-xl">
         <header className="flex justify-center">
           <ChopListLogo />
         </header>
@@ -21,7 +21,7 @@ export default function NotFound() {
             Error 404
           </p>
 
-          <h1 className="mt-3 text-3xl font-bold tracking-tight text-foreground">
+          <h1 className="mt-3 text-3xl font-bold tracking-tight text-foreground md:text-4xl">
             Page not found
           </h1>
 
@@ -30,7 +30,7 @@ export default function NotFound() {
             moved, or the link might be incorrect.
           </p>
 
-          <div className="mt-8 flex w-full flex-col gap-3">
+          <div className="mt-8 flex w-full flex-col gap-3 md:max-w-md md:flex-row-reverse">
             <button
               type="button"
               onClick={() => navigate("/")}

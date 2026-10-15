@@ -258,12 +258,12 @@ export default function SellerDashboard() {
   };
 
   return (
-    <main className="min-h-[100dvh] bg-background px-4 py-6 pb-28">
-      <div className="mx-auto flex w-full max-w-[420px] flex-col">
+    <main className="min-h-[100dvh] bg-background px-4 py-6 pb-28 md:px-8 md:pt-10 lg:pb-12 lg:pl-72 lg:pr-8">
+      <div className="mx-auto flex w-full max-w-[420px] flex-col md:max-w-3xl lg:max-w-5xl">
         <SellerHeader businessName={seller?.businessName || "Your shop"} />
 
-        <section className="mt-8">
-          <h1 className="text-3xl font-semibold tracking-tight text-foreground">
+        <section className="mt-8 lg:mt-0">
+          <h1 className="text-3xl font-semibold tracking-tight text-foreground md:text-4xl">
             What's cooking?
           </h1>
 
@@ -273,20 +273,22 @@ export default function SellerDashboard() {
         </section>
 
         {needsProfile && (
-          <section className="mt-6 rounded-xl border border-border bg-card p-4">
-            <h2 className="font-semibold text-foreground">
-              Complete your shop profile
-            </h2>
+          <section className="mt-6 rounded-xl border border-border bg-card p-4 md:flex md:items-center md:justify-between md:gap-6 md:p-5">
+            <div>
+              <h2 className="font-semibold text-foreground">
+                Complete your shop profile
+              </h2>
 
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              You skipped setup. You can complete your business and payment
-              details whenever you're ready.
-            </p>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                You skipped setup. You can complete your business and payment
+                details whenever you're ready.
+              </p>
+            </div>
 
             <button
               type="button"
               onClick={() => navigate("/seller/profile/edit")}
-              className="mt-4 w-full rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground hover:opacity-90"
+              className="mt-4 w-full rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground hover:opacity-90 md:mt-0 md:w-auto md:shrink-0 md:px-6"
             >
               Complete profile
             </button>
@@ -305,12 +307,12 @@ export default function SellerDashboard() {
             />
           </div>
         ) : !activeMenu ? (
-          <section className="mt-8 rounded-xl border border-border bg-card p-6 text-center">
+          <section className="mt-8 rounded-xl border border-border bg-card p-6 text-center md:px-10 md:py-12">
             <h2 className="text-lg font-semibold text-foreground">
               {needsProfile ? "Your dashboard is ready" : "No menu yet"}
             </h2>
 
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">
               {needsProfile
                 ? "Your account is ready. Complete your profile when convenient, then create your first menu to start accepting orders."
                 : "Create your first menu to add dishes, set your delivery schedule, and start accepting orders."}
@@ -320,7 +322,7 @@ export default function SellerDashboard() {
               <button
                 type="button"
                 onClick={() => navigate("/seller/menu/new")}
-                className="mt-5 w-full rounded-lg bg-primary px-4 py-3 font-semibold text-primary-foreground hover:opacity-90"
+                className="mt-5 w-full rounded-lg bg-primary px-4 py-3 font-semibold text-primary-foreground hover:opacity-90 md:w-auto md:px-8"
               >
                 Create your first menu
               </button>
@@ -330,168 +332,172 @@ export default function SellerDashboard() {
               <button
                 type="button"
                 onClick={() => navigate("/seller/profile/edit")}
-                className="mt-5 w-full rounded-lg border border-border px-4 py-3 font-semibold text-foreground hover:bg-muted"
+                className="mt-5 w-full rounded-lg border border-border px-4 py-3 font-semibold text-foreground hover:bg-muted md:w-auto md:px-8"
               >
                 Update your profile
               </button>
             )}
           </section>
         ) : (
-          <>
-            <section className="mt-8 rounded-xl border border-border bg-card p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Current menu
+          <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-8">
+              <div className="min-w-0">
+                <section className="mt-8 rounded-xl border border-border bg-card p-4 md:p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Current menu
+                      </p>
+
+                      <h2 className="mt-1 text-lg font-medium text-foreground">
+                        {activeMenu.title}
+                      </h2>
+                    </div>
+
+                    <MenuStatus status={activeMenu.status} />
+                  </div>
+
+                  <p className="mt-3 text-sm text-muted-foreground">
+                    Order cutoff: {formatLagosDateTime(activeMenu.cutoffAt)}
                   </p>
+                </section>
 
-                  <h2 className="mt-1 text-lg font-medium text-foreground">
-                    {activeMenu.title}
-                  </h2>
-                </div>
+                <section className="mt-8">
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <h2 className="text-lg font-semibold text-foreground">
+                      Your Menu
+                    </h2>
 
-                <MenuStatus status={activeMenu.status} />
-              </div>
-
-              <p className="mt-3 text-sm text-muted-foreground">
-                Order cutoff: {formatLagosDateTime(activeMenu.cutoffAt)}
-              </p>
-            </section>
-
-            <section className="mt-8">
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <h2 className="text-lg font-semibold text-foreground">
-                  Your Menu
-                </h2>
-
-                <span className="text-sm text-muted-foreground">
-                  {menuItems.length}{" "}
-                  {menuItems.length === 1 ? "dish" : "dishes"}
-                </span>
-              </div>
-
-              {menuItems.length === 0 ? (
-                <p className="rounded-xl border border-border bg-card p-5 text-sm text-muted-foreground">
-                  This menu has no dishes yet.
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  {menuItems.map((item) => (
-                    <MenuItemCard key={item.id} item={item} />
-                  ))}
-                </div>
-              )}
-
-              {activeMenu.status === "draft" && (
-                <button
-                  type="button"
-                  onClick={() => navigate(`/seller/menu/${activeMenu.id}/edit`)}
-                  className="mt-3 w-full rounded-lg border border-border px-4 py-3 text-sm font-semibold text-foreground hover:bg-muted"
-                >
-                  Edit menu and delivery schedule
-                </button>
-              )}
-            </section>
-
-            <section className="mt-6">
-              <h2 className="text-lg font-bold text-foreground">
-                Delivery details
-              </h2>
-
-              <div className="mt-3 rounded-xl border border-border bg-card p-4">
-                <p className="text-sm font-medium text-foreground">
-                  Delivery days
-                </p>
-
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {(activeMenu.deliveryDays ?? []).map((day) => (
-                    <span
-                      key={day}
-                      className="rounded-md bg-muted px-2 py-1 text-xs text-foreground"
-                    >
-                      {formatDeliveryDay(day)}
+                    <span className="text-sm text-muted-foreground">
+                      {menuItems.length}{" "}
+                      {menuItems.length === 1 ? "dish" : "dishes"}
                     </span>
-                  ))}
-                </div>
+                  </div>
 
-                <p className="mt-4 text-sm font-medium text-foreground">
-                  Delivery areas
-                </p>
-
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {(activeMenu.areas ?? []).map((area) => (
-                    <span
-                      key={area}
-                      className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground"
-                    >
-                      {area}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </section>
-
-            {activeMenu.status === "draft" && (
-              <button
-                type="button"
-                onClick={handlePublish}
-                disabled={isBusy || menuItems.length === 0}
-                className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-4 font-semibold text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Send className="h-5 w-5" />
-
-                {openMenuMutation.isPending
-                  ? "Publishing menu..."
-                  : `Publish menu · ${totalPortions} portions`}
-              </button>
-            )}
-
-            {activeMenu.status === "open" && (
-              <section className="mt-6 rounded-xl border border-border bg-card p-4">
-                <div className="flex items-center gap-2">
-                  <Check className="h-5 w-5 text-primary" />
-                  <h2 className="font-semibold text-foreground">
-                    Your menu is published
-                  </h2>
-                </div>
-
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Share this link with your customers so they can view your
-                  menu.
-                </p>
-
-                <div className="mt-3 break-all rounded-lg bg-muted p-3 text-sm text-foreground">
-                  {shareUrl ||
-                    "Your customer link is unavailable because the shop slug is missing."}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleCopyLink}
-                  disabled={!shareUrl}
-                  className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {copied ? (
-                    <Check className="h-4 w-4" />
+                  {menuItems.length === 0 ? (
+                    <p className="rounded-xl border border-border bg-card p-5 text-sm text-muted-foreground">
+                      This menu has no dishes yet.
+                    </p>
                   ) : (
-                    <Copy className="h-4 w-4" />
+                    <div className="space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0">
+                      {menuItems.map((item) => (
+                        <MenuItemCard key={item.id} item={item} />
+                      ))}
+                    </div>
                   )}
-                  {copied ? "Link copied" : "Copy shareable link"}
-                </button>
 
-                <button
-                  type="button"
-                  onClick={handleCloseMenu}
-                  disabled={isBusy}
-                  className="mt-8 w-full rounded-lg border border-border px-4 py-3 text-sm font-semibold text-destructive/70 hover:border-destructive disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {closeMenuMutation.isPending
-                    ? "Closing menu..."
-                    : "Close menu"}
-                </button>
-              </section>
-            )}
-          </>
+                  {activeMenu.status === "draft" && (
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/seller/menu/${activeMenu.id}/edit`)}
+                      className="mt-3 w-full rounded-lg border border-border px-4 py-3 text-sm font-semibold text-foreground hover:bg-muted"
+                    >
+                      Edit menu and delivery schedule
+                    </button>
+                  )}
+                </section>
+              </div>
+
+              <div className="lg:sticky lg:top-10 lg:mt-8">
+                <section className="mt-6 lg:mt-0">
+                  <h2 className="text-lg font-bold text-foreground">
+                    Delivery details
+                  </h2>
+
+                  <div className="mt-3 rounded-xl border border-border bg-card p-4">
+                    <p className="text-sm font-medium text-foreground">
+                      Delivery days
+                    </p>
+
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {(activeMenu.deliveryDays ?? []).map((day) => (
+                        <span
+                          key={day}
+                          className="rounded-md bg-muted px-2 py-1 text-xs text-foreground"
+                        >
+                          {formatDeliveryDay(day)}
+                        </span>
+                      ))}
+                    </div>
+
+                    <p className="mt-4 text-sm font-medium text-foreground">
+                      Delivery areas
+                    </p>
+
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {(activeMenu.areas ?? []).map((area) => (
+                        <span
+                          key={area}
+                          className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground"
+                        >
+                          {area}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </section>
+
+                {activeMenu.status === "draft" && (
+                  <button
+                    type="button"
+                    onClick={handlePublish}
+                    disabled={isBusy || menuItems.length === 0}
+                    className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-4 font-semibold text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Send className="h-5 w-5" />
+
+                    {openMenuMutation.isPending
+                      ? "Publishing menu..."
+                      : `Publish menu · ${totalPortions} portions`}
+                  </button>
+                )}
+
+                {activeMenu.status === "open" && (
+                  <section className="mt-6 rounded-xl border border-border bg-card p-4">
+                    <div className="flex items-center gap-2">
+                      <Check className="h-5 w-5 text-primary" />
+                      <h2 className="font-semibold text-foreground">
+                        Your menu is published
+                      </h2>
+                    </div>
+
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      Share this link with your customers so they can view your
+                      menu.
+                    </p>
+
+                    <div className="mt-3 break-all rounded-lg bg-muted p-3 text-sm text-foreground">
+                      {shareUrl ||
+                        "Your customer link is unavailable because the shop slug is missing."}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleCopyLink}
+                      disabled={!shareUrl}
+                      className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {copied ? (
+                        <Check className="h-4 w-4" />
+                      ) : (
+                        <Copy className="h-4 w-4" />
+                      )}
+                      {copied ? "Link copied" : "Copy shareable link"}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleCloseMenu}
+                      disabled={isBusy}
+                      className="mt-8 w-full rounded-lg border border-border px-4 py-3 text-sm font-semibold text-destructive/70 hover:border-destructive disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {closeMenuMutation.isPending
+                        ? "Closing menu..."
+                        : "Close menu"}
+                    </button>
+                  </section>
+                )}
+              </div>
+          </div>
         )}
 
         {actionError && (

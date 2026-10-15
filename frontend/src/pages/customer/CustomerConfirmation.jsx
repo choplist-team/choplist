@@ -41,7 +41,7 @@ export default function CustomerConfirmation() {
   if (!orderDetails?.ref) {
     return (
       <main className="min-h-[100dvh] bg-background px-4">
-        <div className="mx-auto w-full max-w-[420px] py-6">
+        <div className="mx-auto w-full max-w-[420px] py-6 md:max-w-2xl md:px-4">
           <CustomerHeader />
 
           <section className="mt-12 space-y-4 text-center">
@@ -73,17 +73,17 @@ export default function CustomerConfirmation() {
 
   return (
     <main className="min-h-[100dvh] bg-background px-4">
-      <div className="mx-auto w-full max-w-[420px] pb-10">
+      <div className="mx-auto w-full max-w-[420px] pb-10 md:max-w-2xl md:px-4 md:pb-14 lg:max-w-5xl">
         <CustomerHeader />
 
-        <section className="mt-8 space-y-4 text-center">
+        <section className="mx-auto mt-8 space-y-4 text-center md:mt-10 md:max-w-xl">
           <CheckCircle2 className="mx-auto size-14 text-primary" />
 
           <p className="text-sm font-semibold uppercase tracking-wider text-primary">
             Order received
           </p>
 
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">
+          <h1 className="text-2xl font-bold tracking-tight text-foreground md:text-4xl">
             Thank you for your order!
           </h1>
 
@@ -94,147 +94,151 @@ export default function CustomerConfirmation() {
           </p>
         </section>
 
-        <section className="mt-8 space-y-4 rounded-2xl border border-border bg-card p-5">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm text-muted-foreground">Order reference</p>
-              <p className="mt-1 text-xl font-bold text-primary">
-                {orderDetails.ref}
-              </p>
+        <div className="lg:mt-10 lg:grid lg:grid-cols-2 lg:items-start lg:gap-6">
+          <section className="mt-8 space-y-4 rounded-2xl border border-border bg-card p-5 md:p-6 lg:mt-0">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm text-muted-foreground">Order reference</p>
+                <p className="mt-1 text-xl font-bold text-primary">
+                  {orderDetails.ref}
+                </p>
+              </div>
+
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                aria-label="Copy order reference"
+                onClick={copyReference}
+              >
+                <ClipboardCopy size={18} />
+              </Button>
             </div>
 
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              aria-label="Copy order reference"
-              onClick={copyReference}
-            >
-              <ClipboardCopy size={18} />
-            </Button>
-          </div>
+            <div className="flex items-center gap-2 rounded-xl bg-soft-green p-3 text-sm text-primary">
+              <Clock3 size={18} />
+              <span>
+                Payment status:{" "}
+                <strong>{orderDetails.status ?? "pending"}</strong>
+              </span>
+            </div>
 
-          <div className="flex items-center gap-2 rounded-xl bg-soft-green p-3 text-sm text-primary">
-            <Clock3 size={18} />
-            <span>
-              Payment status:{" "}
-              <strong>{orderDetails.status ?? "pending"}</strong>
-            </span>
-          </div>
+            <div className="space-y-3 border-t border-border pt-4">
+              <h2 className="font-semibold text-foreground">Order summary</h2>
 
-          <div className="space-y-3 border-t border-border pt-4">
-            <h2 className="font-semibold text-foreground">Order summary</h2>
+              {(orderDetails.lines ?? []).map((item, index) => (
+                <div
+                  key={`${item.name}-${index}`}
+                  className="flex justify-between gap-3 text-sm"
+                >
+                  <div>
+                    <p className="font-medium text-foreground">{item.name}</p>
+                    <p className="text-muted-foreground">
+                      {item.qty} × {formatPrice(item.unitPrice)}
+                    </p>
+                  </div>
 
-            {(orderDetails.lines ?? []).map((item, index) => (
-              <div
-                key={`${item.name}-${index}`}
-                className="flex justify-between gap-3 text-sm"
-              >
+                  <p className="shrink-0 font-medium text-foreground">
+                    {formatPrice(item.qty * item.unitPrice)}
+                  </p>
+                </div>
+              ))}
+
+              <div className="flex justify-between border-t border-border pt-3">
+                <span className="font-semibold">Total</span>
+                <span className="text-lg font-bold text-primary">
+                  {formatPrice(orderDetails.total ?? paymentDetails?.amount ?? 0)}
+                </span>
+              </div>
+            </div>
+          </section>
+
+          {paymentDetails && (
+            <section className="mt-5 space-y-4 rounded-2xl border border-border bg-card p-5 md:p-6 lg:mt-0">
+              <h2 className="text-lg font-bold text-foreground">
+                Complete your payment
+              </h2>
+
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                {paymentDetails.instructions}
+              </p>
+
+              <div className="space-y-3 rounded-xl bg-soft-green p-4 md:grid md:grid-cols-2 md:gap-4 md:space-y-0">
                 <div>
-                  <p className="font-medium text-foreground">{item.name}</p>
-                  <p className="text-muted-foreground">
-                    {item.qty} × {formatPrice(item.unitPrice)}
+                  <p className="text-xs text-muted-foreground">Bank</p>
+                  <p className="font-semibold text-foreground">
+                    {paymentDetails.bankName}
                   </p>
                 </div>
 
-                <p className="shrink-0 font-medium text-foreground">
-                  {formatPrice(item.qty * item.unitPrice)}
-                </p>
-              </div>
-            ))}
+                <div>
+                  <p className="text-xs text-muted-foreground">Account name</p>
+                  <p className="font-semibold text-foreground">
+                    {paymentDetails.accountName}
+                  </p>
+                </div>
 
-            <div className="flex justify-between border-t border-border pt-3">
-              <span className="font-semibold">Total</span>
-              <span className="text-lg font-bold text-primary">
-                {formatPrice(orderDetails.total ?? paymentDetails?.amount ?? 0)}
-              </span>
-            </div>
-          </div>
-        </section>
+                <div>
+                  <p className="text-xs text-muted-foreground">Account number</p>
+                  <p className="break-all text-lg font-bold text-foreground">
+                    {paymentDetails.accountNumber}
+                  </p>
+                </div>
 
-        {paymentDetails && (
-          <section className="mt-5 space-y-4 rounded-2xl border border-border bg-card p-5">
-            <h2 className="text-lg font-bold text-foreground">
-              Complete your payment
-            </h2>
+                <div>
+                  <p className="text-xs text-muted-foreground">Transfer amount</p>
+                  <p className="text-xl font-bold text-primary">
+                    {formatPrice(paymentDetails.amount)}
+                  </p>
+                </div>
 
-            <p className="text-sm leading-relaxed text-muted-foreground">
-              {paymentDetails.instructions}
-            </p>
-
-            <div className="space-y-3 rounded-xl bg-soft-green p-4">
-              <div>
-                <p className="text-xs text-muted-foreground">Bank</p>
-                <p className="font-semibold text-foreground">
-                  {paymentDetails.bankName}
-                </p>
+                <div>
+                  <p className="text-xs text-muted-foreground">
+                    Transfer description
+                  </p>
+                  <p className="font-bold text-foreground">
+                    {paymentDetails.reference ?? orderDetails.ref}
+                  </p>
+                </div>
               </div>
 
-              <div>
-                <p className="text-xs text-muted-foreground">Account name</p>
-                <p className="font-semibold text-foreground">
-                  {paymentDetails.accountName}
-                </p>
-              </div>
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                Your order remains pending until the seller confirms your payment.
+                ChopList does not transfer money.
+              </p>
+            </section>
+          )}
+        </div>
 
-              <div>
-                <p className="text-xs text-muted-foreground">Account number</p>
-                <p className="break-all text-lg font-bold text-foreground">
-                  {paymentDetails.accountNumber}
-                </p>
-              </div>
+        <div className="md:mx-auto md:mt-4 md:max-w-sm">
+          {sellerDetails?.phone && (
+            <a
+              href={`tel:${sellerDetails.phone}`}
+              className="mt-5 flex items-center justify-center gap-2 rounded-xl border border-border p-3 text-sm font-medium text-foreground hover:bg-muted"
+            >
+              <Phone size={18} />
+              Contact {sellerDetails.businessName ?? "the kitchen"}
+            </a>
+          )}
 
-              <div>
-                <p className="text-xs text-muted-foreground">Transfer amount</p>
-                <p className="text-xl font-bold text-primary">
-                  {formatPrice(paymentDetails.amount)}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-xs text-muted-foreground">
-                  Transfer description
-                </p>
-                <p className="font-bold text-foreground">
-                  {paymentDetails.reference ?? orderDetails.ref}
-                </p>
-              </div>
-            </div>
-
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              Your order remains pending until the seller confirms your payment.
-              ChopList does not transfer money.
-            </p>
-          </section>
-        )}
-
-        {sellerDetails?.phone && (
-          <a
-            href={`tel:${sellerDetails.phone}`}
-            className="mt-5 flex items-center justify-center gap-2 rounded-xl border border-border p-3 text-sm font-medium text-foreground hover:bg-muted"
+          <Link
+            to="/order-lookup"
+            className="mt-4 flex items-center justify-center gap-2 text-sm font-semibold text-primary hover:underline"
           >
-            <Phone size={18} />
-            Contact {sellerDetails.businessName ?? "the kitchen"}
-          </a>
-        )}
+            <Search size={16} />
+            Track your order
+          </Link>
 
-        <Link
-          to="/order-lookup"
-          className="mt-4 flex items-center justify-center gap-2 text-sm font-semibold text-primary hover:underline"
-        >
-          <Search size={16} />
-          Track your order
-        </Link>
-
-        <Button
-          type="button"
-          variant="outline"
-          className="mt-5 w-full rounded-xl"
-          onClick={() => navigate(`/shop/${slug}`)}
-        >
-          <ArrowLeft size={18} />
-          Back to menu
-        </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="mt-5 w-full rounded-xl"
+            onClick={() => navigate(`/shop/${slug}`)}
+          >
+            <ArrowLeft size={18} />
+            Back to menu
+          </Button>
+        </div>
       </div>
     </main>
   );

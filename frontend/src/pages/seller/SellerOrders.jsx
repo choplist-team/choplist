@@ -353,12 +353,12 @@ export default function SellerOrders() {
   };
 
   return (
-    <main className="min-h-[100dvh] bg-background px-4 pb-28 pt-6">
-      <div className="mx-auto flex w-full max-w-[420px] flex-col">
+    <main className="min-h-[100dvh] bg-background px-4 pb-28 pt-6 md:px-8 md:pt-10 lg:pb-12 lg:pl-72 lg:pr-8">
+      <div className="mx-auto flex w-full max-w-[420px] flex-col md:max-w-3xl lg:max-w-5xl">
         <SellerHeader businessName={sellerQuery.data?.businessName} />
 
-        <section className="mt-8">
-          <h1 className="text-3xl font-semibold tracking-tight text-foreground">
+        <section className="mt-8 lg:mt-0">
+          <h1 className="text-3xl font-semibold tracking-tight text-foreground md:text-4xl">
             Orders
           </h1>
 
@@ -386,7 +386,7 @@ export default function SellerOrders() {
             </button>
           </div>
         ) : menus.length === 0 ? (
-          <div className="mt-8">
+          <div className="mt-8 md:text-center">
             <EmptyState
               title="No menus yet"
               description="Create a menu and publish it before customers can place orders."
@@ -395,14 +395,14 @@ export default function SellerOrders() {
             <button
               type="button"
               onClick={() => navigate("/seller/menu/new")}
-              className="mt-4 w-full rounded-lg bg-primary px-4 py-3 font-semibold text-primary-foreground"
+              className="mt-4 w-full rounded-lg bg-primary px-4 py-3 font-semibold text-primary-foreground md:w-auto md:px-8"
             >
               Create a menu
             </button>
           </div>
         ) : (
           <>
-            <section className="mt-6 space-y-2">
+            <section className="mt-6 space-y-2 md:max-w-md">
               <label
                 htmlFor="orders-menu"
                 className="text-sm font-medium text-foreground"
@@ -453,7 +453,7 @@ export default function SellerOrders() {
                 </button>
               </div>
 
-              <div className="mt-4 grid grid-cols-4 gap-1 rounded-xl bg-muted p-1">
+              <div className="mt-4 grid grid-cols-4 gap-1 rounded-xl bg-muted p-1 md:max-w-md">
                 {[
                   { label: "All", value: "all" },
                   { label: "Pending", value: "pending" },
@@ -526,7 +526,7 @@ export default function SellerOrders() {
                   />
                 </div>
               ) : (
-                <div className="mt-4 space-y-4">
+                <div className="mt-4 space-y-4 md:grid md:grid-cols-2 md:items-start md:gap-4 md:space-y-0">
                   {orders.map((order) => (
                     <OrderCard
                       key={order.ref}

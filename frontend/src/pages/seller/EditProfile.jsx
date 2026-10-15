@@ -4,6 +4,7 @@ import { useCurrentSeller } from "@/hooks/useCurrentSeller";
 import { useSaveSellerProfile } from "@/hooks/useSaveSellerProfile";
 import { ApiError } from "@/api/api-client";
 import { ChopListLogo } from "@/components/choplist-logo";
+import { hasErrors, validateProfile } from "@/lib/validation";
 import SellerBottomNav from "@/components/seller/BottomNav";
 
 const emptyProfile = {
@@ -115,46 +116,20 @@ function EditProfileForm({ seller }) {
   }
 
   function validateForm() {
-    const nextErrors = {};
-
-    if (!formData.businessName.trim()) {
-      nextErrors.businessName = "Enter your business name.";
-    }
-
-    if (!formData.phone.trim()) {
-      nextErrors.phone = "Enter your phone number.";
-    }
-
-    if (!formData.bankName.trim()) {
-      nextErrors.bankName = "Enter your bank name.";
-    }
-
-    if (!/^\d{10}$/.test(formData.accountNumber)) {
-      nextErrors.accountNumber =
-        "Enter an account number containing exactly 10 digits.";
-    }
-
-    if (!formData.accountName.trim()) {
-      nextErrors.accountName = "Enter the account holder's name.";
-    }
-
-    if (
-      formData.slug.trim() &&
-      !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(formData.slug.trim())
-    ) {
-      nextErrors.slug =
-        "Use lowercase letters, numbers, and single hyphens only.";
-    }
+    const nextErrors = validateProfile(formData);
 
     setErrors(nextErrors);
-    return Object.keys(nextErrors).length === 0;
+    return !hasErrors(nextErrors);
   }
 
   async function handleSubmit(event) {
     event.preventDefault();
     setFormError("");
 
-    if (!validateForm()) return;
+    if (!validateForm()) {
+      setFormError("Please fix the highlighted fields above.");
+      return;
+    }
 
     const profile = {
       businessName: formData.businessName.trim(),
@@ -166,7 +141,7 @@ function EditProfileForm({ seller }) {
       },
     };
 
-    const slug = formData.slug.trim();
+    const slug = formData.slug.trim().toLowerCase();
     if (slug && slug !== (seller?.slug ?? "")) {
       profile.slug = slug;
     }
@@ -178,14 +153,15 @@ function EditProfileForm({ seller }) {
       if (error instanceof ApiError && error.code === "SLUG_TAKEN") {
         setErrors((current) => ({
           ...current,
-          slug: "This public link is already in use. Choose another.",
+          slug: "This shop link is already taken by another seller. Choose a different one.",
         }));
         return;
       }
 
       if (error instanceof ApiError && error.code === "VALIDATION_ERROR") {
         setFormError(
-          error.message || "Please check the information you entered."
+          error.message ||
+            "Some details were not accepted. Check each field and try again."
         );
         return;
       }
@@ -197,10 +173,10 @@ function EditProfileForm({ seller }) {
   }
 
   return (
-    <main className="min-h-[100dvh] bg-background">
-      <div className="mx-auto flex min-h-[100dvh] w-full max-w-[420px] flex-col pb-28">
+    <main className="min-h-[100dvh] bg-background lg:pl-64">
+      <div className="mx-auto flex min-h-[100dvh] w-full max-w-[420px] flex-col pb-28 md:max-w-2xl md:px-8 md:pt-10 lg:pb-12">
         <header className="flex items-center justify-between">
-          <Link to="/">
+          <Link to="/" className="lg:hidden">
             <ChopListLogo />
           </Link>
           <button
@@ -213,7 +189,7 @@ function EditProfileForm({ seller }) {
         </header>
 
         <div className="mt-8">
-          <h1 className="text-2xl font-bold text-foreground">
+          <h1 className="text-2xl font-bold text-foreground md:text-4xl">
             Edit your profile
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
@@ -221,8 +197,8 @@ function EditProfileForm({ seller }) {
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="mt-7 space-y-5">
-          <div className="space-y-4 rounded-xl border border-border bg-card p-4">
+        <form onSubmit={handleSubmit} noValidate className="mt-7 space-y-5">
+          <div className="space-y-4 rounded-xl border border-border bg-card p-4 md:grid md:grid-cols-2 md:gap-4 md:space-y-0 md:p-5">
             <FormField
               label="Business name"
               name="businessName"
@@ -245,7 +221,7 @@ function EditProfileForm({ seller }) {
             />
           </div>
 
-          <div className="space-y-4 rounded-xl border border-border bg-card p-4">
+          <div className="space-y-4 rounded-xl border border-border bg-card p-4 md:p-5">
             <div>
               <h2 className="font-semibold text-foreground">
                 Update payment details
@@ -290,8 +266,8 @@ function EditProfileForm({ seller }) {
             />
           </div>
 
-          <div className="space-y-4 rounded-xl border border-border bg-card p-4">
-            <div className="pt-5">
+          <div className="space-y-4 rounded-xl border border-border bg-card p-4 md:p-5">
+            <div className="pt-5 md:pt-0">
               <h2 className="font-semibold text-foreground">Shop menu link</h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 Changing this link may break links you've already shared. Leave
@@ -315,21 +291,23 @@ function EditProfileForm({ seller }) {
             </p>
           )}
 
-          <button
-            type="submit"
-            disabled={saveProfile.isPending}
-            className="w-full rounded-xl bg-primary px-4 py-3 font-semibold text-primary-foreground transition-opacity disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {saveProfile.isPending ? "Saving..." : "Save changes"}
-          </button>
+          <div className="space-y-5 md:flex md:flex-row-reverse md:gap-3 md:space-y-0">
+            <button
+              type="submit"
+              disabled={saveProfile.isPending}
+              className="w-full rounded-xl bg-primary px-4 py-3 font-semibold text-primary-foreground transition-opacity disabled:cursor-not-allowed disabled:opacity-60 md:w-auto md:px-8"
+            >
+              {saveProfile.isPending ? "Saving..." : "Save changes"}
+            </button>
 
-          <button
-            type="button"
-            onClick={() => navigate("/seller/dashboard")}
-            className="w-full rounded-xl border border-border px-4 py-3 font-semibold text-destructive/70 hover:border-destructive"
-          >
-            Cancel
-          </button>
+            <button
+              type="button"
+              onClick={() => navigate("/seller/dashboard")}
+              className="w-full rounded-xl border border-border px-4 py-3 font-semibold text-destructive/70 hover:border-destructive md:w-auto md:px-8"
+            >
+              Cancel
+            </button>
+          </div>
         </form>
       </div>
 

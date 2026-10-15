@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useLookupOrder } from "@/hooks/useLookupOrder";
+import { FieldError } from "@/components/field-error";
+import { hasErrors, validateOrderLookup } from "@/lib/validation";
 import { useNavigate } from "react-router-dom";
 
 const formatPrice = (price) =>
@@ -19,6 +21,7 @@ export default function OrderLookup() {
   const [reference, setReference] = useState("");
   const [phoneLast4, setPhoneLast4] = useState("");
   const [submitted, setSubmitted] = useState(null);
+  const [fieldErrors, setFieldErrors] = useState({});
 
   const navigate = useNavigate();
 
@@ -30,8 +33,13 @@ export default function OrderLookup() {
   const handleSubmit = (event) => {
     event.preventDefault();
 
+    const errors = validateOrderLookup({ reference, phoneLast4 });
+    setFieldErrors(errors);
+
+    if (hasErrors(errors)) return;
+
     const next = {
-      reference: reference.trim(),
+      reference: reference.trim().toUpperCase(),
       phoneLast4: phoneLast4.trim(),
     };
 
@@ -53,15 +61,15 @@ export default function OrderLookup() {
 
   return (
     <main className="min-h-[100dvh] bg-background px-4">
-      <div className="mx-auto w-full max-w-[420px] pb-10">
+      <div className="mx-auto w-full max-w-[420px] pb-10 md:max-w-xl md:pb-14">
         <CustomerHeader />
 
-        <section className="mt-8 space-y-2">
+        <section className="mt-8 space-y-2 md:mt-12">
           <div className="flex size-12 items-center justify-center rounded-xl bg-soft-green text-primary">
             <ClipboardList size={25} />
           </div>
 
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">
+          <h1 className="text-2xl font-bold tracking-tight text-foreground md:text-4xl">
             Find your order
           </h1>
 
@@ -73,18 +81,28 @@ export default function OrderLookup() {
 
         <form
           onSubmit={handleSubmit}
-          className="mt-6 space-y-4 rounded-2xl border border-border bg-card p-5"
+          noValidate
+          className="mt-6 space-y-4 rounded-2xl border border-border bg-card p-5 md:p-6"
         >
           <div className="space-y-2">
             <Label htmlFor="reference">Order reference</Label>
             <Input
               id="reference"
               value={reference}
-              onChange={(event) => setReference(event.target.value)}
+              onChange={(event) => {
+                setReference(event.target.value);
+                setFieldErrors((current) => ({ ...current, reference: "" }));
+              }}
+              aria-invalid={Boolean(fieldErrors.reference)}
+              aria-describedby={
+                fieldErrors.reference ? "reference-error" : undefined
+              }
               placeholder="e.g. CL-7KQ2M"
               autoComplete="off"
               required
             />
+
+            <FieldError id="reference-error" message={fieldErrors.reference} />
           </div>
 
           <div className="space-y-2">
@@ -92,8 +110,13 @@ export default function OrderLookup() {
             <Input
               id="phoneLast4"
               value={phoneLast4}
-              onChange={(event) =>
-                setPhoneLast4(event.target.value.replace(/\D/g, "").slice(0, 4))
+              onChange={(event) => {
+                setPhoneLast4(event.target.value.replace(/\D/g, "").slice(0, 4));
+                setFieldErrors((current) => ({ ...current, phoneLast4: "" }));
+              }}
+              aria-invalid={Boolean(fieldErrors.phoneLast4)}
+              aria-describedby={
+                fieldErrors.phoneLast4 ? "phoneLast4-error" : undefined
               }
               placeholder="e.g. 1234"
               inputMode="numeric"
@@ -103,6 +126,8 @@ export default function OrderLookup() {
               minLength={4}
               required
             />
+
+            <FieldError id="phoneLast4-error" message={fieldErrors.phoneLast4} />
           </div>
 
           <Button type="submit" className="w-full" disabled={lookup.isFetching}>
@@ -130,14 +155,18 @@ export default function OrderLookup() {
               We couldn't find your order
             </p>
             <p className="mt-1 text-sm text-muted-foreground">
-              {lookup.error?.message ||
-                "Please check your order reference and phone number, then try again."}
+              {lookup.error?.code === "ORDER_NOT_FOUND"
+                ? "No order matches that reference and phone number. Check the reference on your confirmation and make sure the last 4 digits match the phone number you ordered with."
+                : lookup.error?.code === "NETWORK_ERROR"
+                  ? "We couldn't reach the server. Check your internet connection and try again."
+                  : lookup.error?.message ||
+                    "Please check your order reference and phone number, then try again."}
             </p>
           </div>
         )}
 
         {lookup.isSuccess && order?.ref && (
-          <section className="mt-6 space-y-4 rounded-2xl border border-border bg-card p-5">
+          <section className="mt-6 space-y-4 rounded-2xl border border-border bg-card p-5 md:p-6">
             <div>
               <p className="text-sm text-muted-foreground">Order reference</p>
               <p className="text-xl font-bold text-primary">{order.ref}</p>
@@ -193,7 +222,7 @@ export default function OrderLookup() {
                   {payment.instructions}
                 </p>
 
-                <div className="space-y-3 rounded-xl bg-soft-green p-4 text-sm">
+                <div className="space-y-3 rounded-xl bg-soft-green p-4 text-sm md:grid md:grid-cols-2 md:gap-4 md:space-y-0">
                   <div>
                     <p className="text-muted-foreground">Bank</p>
                     <p className="font-semibold">{payment.bankName}</p>

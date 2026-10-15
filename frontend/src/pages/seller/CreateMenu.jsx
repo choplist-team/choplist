@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Plus, Trash2 } from "lucide-react";
 import SellerHeader from "@/components/seller/Header";
+import { FieldError } from "@/components/field-error";
+import { hasErrors, validateMenu } from "@/lib/validation";
 import { useCurrentSeller } from "@/hooks/useCurrentSeller";
 import { usePostMenu } from "@/hooks/usePostMenu";
 import SellerBottomNav from "@/components/seller/BottomNav";
@@ -31,16 +33,6 @@ function getDefaultDeliveryDay() {
   return new Date(date.getTime() - offset).toISOString().slice(0, 10);
 }
 
-function toIsoWithTimezone(localDateTime) {
-  const date = new Date(localDateTime);
-
-  if (Number.isNaN(date.getTime())) {
-    throw new Error("Enter a valid order cutoff date and time.");
-  }
-
-  return date.toISOString();
-}
-
 export default function CreateMenu() {
   const navigate = useNavigate();
   const { data: seller } = useCurrentSeller();
@@ -52,8 +44,13 @@ export default function CreateMenu() {
   const [areasText, setAreasText] = useState("");
   const [deliveryDays, setDeliveryDays] = useState([getDefaultDeliveryDay()]);
   const [errorMessage, setErrorMessage] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
+
+  const clearFieldError = (name) =>
+    setFieldErrors((current) => ({ ...current, [name]: "" }));
 
   const updateDish = (index, field, value) => {
+    clearFieldError(`item-${index}-${field}`);
     setItems((current) =>
       current.map((item, itemIndex) =>
         itemIndex === index ? { ...item, [field]: value } : item
@@ -68,6 +65,7 @@ export default function CreateMenu() {
   };
 
   const removeDish = (index) => {
+    setFieldErrors({});
     setItems((current) => current.filter((_, i) => i !== index));
   };
 
@@ -76,12 +74,14 @@ export default function CreateMenu() {
   };
 
   const updateDeliveryDay = (index, value) => {
+    clearFieldError(`deliveryDay-${index}`);
     setDeliveryDays((current) =>
       current.map((day, i) => (i === index ? value : day))
     );
   };
 
   const removeDeliveryDay = (index) => {
+    setFieldErrors({});
     setDeliveryDays((current) => current.filter((_, i) => i !== index));
   };
 
@@ -89,100 +89,23 @@ export default function CreateMenu() {
     event.preventDefault();
     setErrorMessage("");
 
-    const areas = [
-      ...new Set(
-        areasText
-          .split(",")
-          .map((area) => area.trim())
-          .filter(Boolean)
-      ),
-    ];
+    const { errors, menu: menuBody } = validateMenu({
+      title,
+      cutoffAt,
+      items,
+      areasText,
+      deliveryDays,
+    });
 
-    const cleanedItems = items.map((item) => ({
-      name: item.name.trim(),
-      description: item.description.trim(),
-      price: Number(item.price),
-      qty: Number(item.qty),
-    }));
+    setFieldErrors(errors);
 
-    const cleanedDeliveryDays = deliveryDays.filter(Boolean);
-
-    if (!title.trim()) {
-      setErrorMessage("Enter a title for this menu.");
-      return;
-    }
-
-    if (cleanedItems.length < 1 || cleanedItems.length > 30) {
-      setErrorMessage("Add between 1 and 30 dishes.");
-      return;
-    }
-
-    if (
-      cleanedItems.some(
-        (item) =>
-          !item.name ||
-          !Number.isInteger(item.price) ||
-          item.price < 1 ||
-          !Number.isInteger(item.qty) ||
-          item.qty < 1 ||
-          item.qty > 1000
-      )
-    ) {
-      setErrorMessage(
-        "Every dish needs a name, a whole-naira price, and 1–1000 portions."
-      );
-      return;
-    }
-
-    if (areas.length < 1 || areas.length > 30) {
-      setErrorMessage("Enter between 1 and 30 delivery areas.");
-      return;
-    }
-
-    if (
-      cleanedDeliveryDays.length < 1 ||
-      new Set(cleanedDeliveryDays).size !== cleanedDeliveryDays.length
-    ) {
-      setErrorMessage("Choose at least one unique delivery date.");
-      return;
-    }
-
-    let cutoff;
-
-    try {
-      cutoff = toIsoWithTimezone(cutoffAt);
-    } catch (error) {
-      setErrorMessage(error.message);
-      return;
-    }
-
-    if (new Date(cutoff).getTime() <= Date.now()) {
-      setErrorMessage("The order cutoff must be in the future.");
-      return;
-    }
-
-    const cutoffDate = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Africa/Lagos",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(new Date(cutoff));
-
-    if (cleanedDeliveryDays.some((day) => day < cutoffDate)) {
-      setErrorMessage(
-        "Delivery dates cannot be before the cutoff date in Lagos time."
-      );
+    if (hasErrors(errors)) {
+      setErrorMessage("Please fix the highlighted fields above.");
       return;
     }
 
     try {
-      await postMenu.mutateAsync({
-        title: title.trim(),
-        cutoffAt: cutoff,
-        items: cleanedItems,
-        areas,
-        deliveryDays: cleanedDeliveryDays,
-      });
+      await postMenu.mutateAsync(menuBody);
 
       navigate("/seller/dashboard", { replace: true });
     } catch (error) {
@@ -193,21 +116,21 @@ export default function CreateMenu() {
   };
 
   return (
-    <main className="min-h-[100dvh] bg-background px-4 py-6">
-      <div className="mx-auto w-full max-w-[420px] pb-28">
+    <main className="min-h-[100dvh] bg-background px-4 py-6 md:px-8 md:pt-10 lg:pl-72 lg:pr-8">
+      <div className="mx-auto w-full max-w-[420px] pb-28 md:max-w-2xl lg:pb-6">
         <SellerHeader businessName={seller?.businessName ?? "Your shop"} />
 
         <button
           type="button"
           onClick={() => navigate("/seller/dashboard")}
-          className="mt-8 inline-flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground"
+          className="mt-8 inline-flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground lg:mt-0"
         >
           <ArrowLeft className="h-4 w-4" />
           Back to dashboard
         </button>
 
         <section className="mt-6">
-          <h1 className="text-3xl font-bold text-foreground">Create a menu</h1>
+          <h1 className="text-3xl font-bold text-foreground md:text-4xl">Create a menu</h1>
 
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
             Add your dishes, set your cutoff, and choose when and where you
@@ -215,10 +138,10 @@ export default function CreateMenu() {
           </p>
         </section>
 
-        <form onSubmit={handleSubmit} className="mt-8 space-y-7">
+        <form onSubmit={handleSubmit} noValidate className="mt-8 space-y-7">
           <section className="space-y-4">
-            <div className="space-y-4 rounded-xl border border-border bg-card p-4">
-              <div>
+            <div className="space-y-4 rounded-xl border border-border bg-card p-4 md:grid md:grid-cols-2 md:gap-4 md:space-y-0 md:p-5">
+              <div className="md:space-y-2">
                 <label
                   htmlFor="title"
                   className="text-sm font-medium text-foreground"
@@ -228,11 +151,21 @@ export default function CreateMenu() {
 
                 <input
                   id="title"
+                  aria-invalid={Boolean(fieldErrors.title)}
+                  aria-describedby={fieldErrors.title ? "title-error" : undefined}
                   value={title}
-                  onChange={(event) => setTitle(event.target.value)}
+                  onChange={(event) => {
+                    setTitle(event.target.value);
+                    clearFieldError("title");
+                  }}
                   placeholder="e.g. Week of 3 Oct"
                   required
-                  className="w-full rounded-lg border border-border bg-card px-3 py-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  className="aria-invalid:border-destructive w-full rounded-lg border border-border bg-card px-3 py-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                />
+
+                <FieldError
+                  id="title-error"
+                  message={fieldErrors.title}
                 />
               </div>
 
@@ -246,11 +179,21 @@ export default function CreateMenu() {
 
                 <input
                   id="cutoffAt"
+                  aria-invalid={Boolean(fieldErrors.cutoffAt)}
+                  aria-describedby={fieldErrors.cutoffAt ? "cutoffAt-error" : undefined}
                   type="datetime-local"
                   value={cutoffAt}
-                  onChange={(event) => setCutoffAt(event.target.value)}
+                  onChange={(event) => {
+                    setCutoffAt(event.target.value);
+                    clearFieldError("cutoffAt");
+                  }}
                   required
-                  className="w-full rounded-lg border border-border bg-card px-3 py-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  className="aria-invalid:border-destructive w-full rounded-lg border border-border bg-card px-3 py-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                />
+
+                <FieldError
+                  id="cutoffAt-error"
+                  message={fieldErrors.cutoffAt}
                 />
               </div>
             </div>
@@ -270,7 +213,7 @@ export default function CreateMenu() {
             {items.map((item, index) => (
               <div
                 key={index}
-                className="space-y-4 rounded-xl border border-border bg-card p-4"
+                className="space-y-4 rounded-xl border border-border bg-card p-4 md:p-5"
               >
                 <div className="flex items-center justify-between">
                   <h3 className="font-medium text-foreground">
@@ -299,13 +242,20 @@ export default function CreateMenu() {
 
                   <input
                     id={`dish-name-${index}`}
+                    aria-invalid={Boolean(fieldErrors[`item-${index}-name`])}
+                    aria-describedby={fieldErrors[`item-${index}-name`] ? `dish-name-${index}-error` : undefined}
                     value={item.name}
                     onChange={(event) =>
                       updateDish(index, "name", event.target.value)
                     }
                     placeholder="e.g. Jollof rice"
                     required
-                    className="w-full rounded-lg border border-border bg-background px-3 py-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    className="aria-invalid:border-destructive w-full rounded-lg border border-border bg-background px-3 py-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  />
+
+                  <FieldError
+                    id={`dish-name-${index}-error`}
+                    message={fieldErrors[`item-${index}-name`]}
                   />
                 </div>
 
@@ -319,13 +269,20 @@ export default function CreateMenu() {
 
                   <textarea
                     id={`dish-description-${index}`}
+                    aria-invalid={Boolean(fieldErrors[`item-${index}-description`])}
+                    aria-describedby={fieldErrors[`item-${index}-description`] ? `dish-description-${index}-error` : undefined}
                     value={item.description}
                     onChange={(event) =>
                       updateDish(index, "description", event.target.value)
                     }
                     placeholder="Describe the dish"
                     rows={2}
-                    className="w-full rounded-lg border border-border bg-background px-3 py-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    className="aria-invalid:border-destructive w-full rounded-lg border border-border bg-background px-3 py-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  />
+
+                  <FieldError
+                    id={`dish-description-${index}-error`}
+                    message={fieldErrors[`item-${index}-description`]}
                   />
                 </div>
 
@@ -340,6 +297,8 @@ export default function CreateMenu() {
 
                     <input
                       id={`dish-price-${index}`}
+                      aria-invalid={Boolean(fieldErrors[`item-${index}-price`])}
+                      aria-describedby={fieldErrors[`item-${index}-price`] ? `dish-price-${index}-error` : undefined}
                       type="number"
                       min="1"
                       step="1"
@@ -350,7 +309,12 @@ export default function CreateMenu() {
                       }
                       placeholder="3500"
                       required
-                      className="w-full rounded-lg border border-border bg-background px-3 py-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      className="aria-invalid:border-destructive w-full rounded-lg border border-border bg-background px-3 py-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    />
+
+                    <FieldError
+                      id={`dish-price-${index}-error`}
+                      message={fieldErrors[`item-${index}-price`]}
                     />
                   </div>
 
@@ -364,6 +328,8 @@ export default function CreateMenu() {
 
                     <input
                       id={`dish-qty-${index}`}
+                      aria-invalid={Boolean(fieldErrors[`item-${index}-qty`])}
+                      aria-describedby={fieldErrors[`item-${index}-qty`] ? `dish-qty-${index}-error` : undefined}
                       type="number"
                       min="1"
                       max="1000"
@@ -375,7 +341,12 @@ export default function CreateMenu() {
                       }
                       placeholder="20"
                       required
-                      className="w-full rounded-lg border border-border bg-background px-3 py-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      className="aria-invalid:border-destructive w-full rounded-lg border border-border bg-background px-3 py-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    />
+
+                    <FieldError
+                      id={`dish-qty-${index}-error`}
+                      message={fieldErrors[`item-${index}-qty`]}
                     />
                   </div>
                 </div>
@@ -391,10 +362,12 @@ export default function CreateMenu() {
               <Plus className="h-4 w-4" />
               Add a dish
             </button>
+
+            <FieldError message={fieldErrors.items} />
           </section>
 
           <section className="space-y-4">
-            <div className="space-y-4 rounded-xl border border-border bg-card p-4">
+            <div className="space-y-4 rounded-xl border border-border bg-card p-4 md:p-5">
               <div className="space-y-3">
                 <div className="flex items-center justify-between gap-3">
                   <label className="text-sm font-semibold text-foreground">
@@ -411,30 +384,36 @@ export default function CreateMenu() {
                 </div>
 
                 {deliveryDays.map((day, index) => (
-                  <div key={index} className="flex items-center gap-2">
-                    <input
-                      type="date"
-                      value={day}
-                      onChange={(event) =>
-                        updateDeliveryDay(index, event.target.value)
-                      }
-                      required
-                      aria-label={`Delivery day ${index + 1}`}
-                      className="min-w-0 flex-1 rounded-lg border border-border bg-card px-3 py-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                    />
+                  <div key={index} className="space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="date"
+                        aria-invalid={Boolean(fieldErrors[`deliveryDay-${index}`])}
+                        value={day}
+                        onChange={(event) =>
+                          updateDeliveryDay(index, event.target.value)
+                        }
+                        required
+                        aria-label={`Delivery day ${index + 1}`}
+                        className="aria-invalid:border-destructive min-w-0 flex-1 rounded-lg border border-border bg-card px-3 py-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      />
 
-                    {deliveryDays.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => removeDeliveryDay(index)}
-                        aria-label={`Remove delivery day ${index + 1}`}
-                        className="rounded-md p-2 text-destructive hover:bg-destructive/10"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    )}
+                      {deliveryDays.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeDeliveryDay(index)}
+                          aria-label={`Remove delivery day ${index + 1}`}
+                          className="rounded-md p-2 text-destructive hover:bg-destructive/10"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                    <FieldError message={fieldErrors[`deliveryDay-${index}`]} />
                   </div>
                 ))}
+
+                <FieldError message={fieldErrors.deliveryDays} />
               </div>
 
               <div className="space-y-2">
@@ -447,12 +426,22 @@ export default function CreateMenu() {
 
                 <textarea
                   id="areas"
+                  aria-invalid={Boolean(fieldErrors.areas)}
+                  aria-describedby={fieldErrors.areas ? "areas-error" : undefined}
                   value={areasText}
-                  onChange={(event) => setAreasText(event.target.value)}
+                  onChange={(event) => {
+                    setAreasText(event.target.value);
+                    clearFieldError("areas");
+                  }}
                   placeholder="Yaba, Surulere, Lekki"
                   rows={3}
                   required
-                  className="w-full rounded-lg border border-border bg-card px-3 py-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  className="aria-invalid:border-destructive w-full rounded-lg border border-border bg-card px-3 py-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                />
+
+                <FieldError
+                  id="areas-error"
+                  message={fieldErrors.areas}
                 />
 
                 <p className="text-xs text-muted-foreground">
@@ -480,7 +469,7 @@ export default function CreateMenu() {
           <button
             type="submit"
             disabled={postMenu.isPending}
-            className="w-full rounded-lg bg-primary px-4 py-3 font-semibold text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+            className="w-full rounded-lg bg-primary px-4 py-3 font-semibold text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 md:ml-auto md:block md:w-auto md:px-8"
           >
             {postMenu.isPending ? "Saving draft..." : "Save menu draft"}
           </button>
