@@ -334,12 +334,12 @@ export default function Delivery() {
   };
 
   return (
-    <main className="min-h-[100dvh] bg-background pb-28">
-      <div className="mx-auto w-full max-w-[420px] px-4 pb-6 pt-4">
+    <main className="min-h-[100dvh] bg-background pb-28 lg:pb-12 lg:pl-64">
+      <div className="mx-auto w-full max-w-[420px] px-4 pb-6 pt-4 md:max-w-3xl md:px-8 md:pt-10 lg:max-w-5xl">
         <SellerHeader businessName={seller?.businessName || "Your business"} />
 
-        <section className="mt-7">
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
+        <section className="mt-7 lg:mt-0">
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-foreground md:text-4xl lg:mt-0">
             Delivery list
           </h1>
 
@@ -348,91 +348,93 @@ export default function Delivery() {
           </p>
         </section>
 
-        <section className="mt-6 rounded-2xl border border-border bg-background p-4">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div>
-              <h2 className="font-semibold text-foreground">
-                Delivery settings
-              </h2>
+        <div className="md:mt-6 md:grid md:grid-cols-[minmax(0,1fr)_16rem] md:gap-5">
+          <section className="mt-6 rounded-2xl border border-border bg-background p-4 md:mt-0 md:p-5">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="font-semibold text-foreground">
+                  Delivery settings
+                </h2>
 
-              <p className="mt-1 text-xs text-muted-foreground">
-                Choose which orders to include
-              </p>
-            </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Choose which orders to include
+                </p>
+              </div>
 
-            <button
-              type="button"
-              onClick={() => refetchDelivery()}
-              disabled={!menuId || isFetching}
-              aria-label="Refresh delivery list"
-              className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-border bg-card text-foreground transition hover:bg-soft-green hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <ClipboardList size={18} />
-            </button>
-          </div>
-
-          <div className="space-y-4">
-            <SelectField
-              label="Menu"
-              value={menuId}
-              onChange={(event) => setSelectedMenuId(event.target.value)}
-            >
-              {menus.length === 0 && (
-                <option value="">No menus available</option>
-              )}
-
-              {menus.map((menu) => (
-                <option key={menu.id} value={menu.id}>
-                  {menu.title || menu.name || "Untitled menu"}
-                </option>
-              ))}
-            </SelectField>
-
-            <div className="grid grid-cols-2 gap-3">
-              <label className="block min-w-0">
-                <span className="mb-1.5 block text-xs font-medium text-muted-foreground">
-                  Delivery date
-                </span>
-
-                <input
-                  type="date"
-                  value={selectedDay}
-                  onChange={(event) => setSelectedDay(event.target.value)}
-                  className="h-11 w-full min-w-0 rounded-xl border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/10"
-                />
-              </label>
-
-              <SelectField
-                label="Payment"
-                value={paidOnly ? "paid" : "all"}
-                onChange={(event) => setPaidOnly(event.target.value === "paid")}
+              <button
+                type="button"
+                onClick={() => refetchDelivery()}
+                disabled={!menuId || isFetching}
+                aria-label="Refresh delivery list"
+                className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-border bg-card text-foreground transition hover:bg-soft-green hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <option value="all">All orders</option>
-                <option value="paid">Paid only</option>
+                <ClipboardList size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <SelectField
+                label="Menu"
+                value={menuId}
+                onChange={(event) => setSelectedMenuId(event.target.value)}
+              >
+                {menus.length === 0 && (
+                  <option value="">No menus available</option>
+                )}
+
+                {menus.map((menu) => (
+                  <option key={menu.id} value={menu.id}>
+                    {menu.title || menu.name || "Untitled menu"}
+                  </option>
+                ))}
               </SelectField>
+
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block min-w-0">
+                  <span className="mb-1.5 block text-xs font-medium text-muted-foreground">
+                    Delivery date
+                  </span>
+
+                  <input
+                    type="date"
+                    value={selectedDay}
+                    onChange={(event) => setSelectedDay(event.target.value)}
+                    className="h-11 w-full min-w-0 rounded-xl border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/10"
+                  />
+                </label>
+
+                <SelectField
+                  label="Payment"
+                  value={paidOnly ? "paid" : "all"}
+                  onChange={(event) => setPaidOnly(event.target.value === "paid")}
+                >
+                  <option value="all">All orders</option>
+                  <option value="paid">Paid only</option>
+                </SelectField>
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
 
-        <section className="mt-5 rounded-2xl bg-primary p-5 text-white">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-sm text-white/80">Orders to deliver</p>
+          <section className="mt-5 rounded-2xl bg-primary p-5 text-white md:mt-0 md:flex md:flex-col md:justify-center">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm text-white/80">Orders to deliver</p>
 
-              <p className="mt-1 text-4xl font-semibold tabular-nums">
-                {deliveryPending ? "—" : orders.length}
-              </p>
+                <p className="mt-1 text-4xl font-semibold tabular-nums">
+                  {deliveryPending ? "—" : orders.length}
+                </p>
 
-              <p className="mt-1 text-sm text-white/80">
-                Across {areas.length} {areas.length === 1 ? "area" : "areas"}
-              </p>
+                <p className="mt-1 text-sm text-white/80">
+                  Across {areas.length} {areas.length === 1 ? "area" : "areas"}
+                </p>
+              </div>
+
+              <div className="flex size-14 shrink-0 items-center justify-center rounded-2xl border border-white/15 bg-white/10">
+                <Truck size={25} />
+              </div>
             </div>
-
-            <div className="flex size-14 shrink-0 items-center justify-center rounded-2xl border border-white/15 bg-white/10">
-              <Truck size={25} />
-            </div>
-          </div>
-        </section>
+          </section>
+        </div>
 
         <div className="mb-4 mt-7 flex items-center justify-between gap-3"></div>
         {menusPending || deliveryPending ? (
@@ -501,7 +503,7 @@ export default function Delivery() {
                     </span>
                   </div>
 
-                  <div className="space-y-4">
+                  <div className="space-y-4 md:grid md:grid-cols-2 md:items-start md:gap-4 md:space-y-0">
                     {area.orders.map((order, orderIndex) => (
                       <OrderCard
                         key={order.ref || `${areaIndex}-${orderIndex}`}
@@ -515,7 +517,7 @@ export default function Delivery() {
           </div>
         )}
 
-        <section className="mt-8 border-t border-border pt-5">
+        <section className="mt-8 border-t border-border pt-5 md:mx-auto md:max-w-md md:border-t-0 md:pt-2">
           {shareMessage && (
             <p
               role="status"

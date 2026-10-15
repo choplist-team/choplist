@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { useAuth } from "@clerk/react";
-import { Link, Navigate, useNavigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import { ApiError } from "@/api/api-client";
 import { ChopListLogo } from "@/components/choplist-logo";
 import { useCurrentSeller } from "@/hooks/useCurrentSeller";
 import { useSaveSellerProfile } from "@/hooks/useSaveSellerProfile";
+import { FieldError } from "@/components/field-error";
+import { hasErrors, validateProfile } from "@/lib/validation";
 
 export default function SellerOnboarding() {
   const { isLoaded, isSignedIn } = useAuth();
@@ -29,6 +31,7 @@ export default function SellerOnboarding() {
   });
 
   const [validationError, setValidationError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
 
   const needsOnboarding =
     profileError instanceof ApiError &&
@@ -42,6 +45,11 @@ export default function SellerOnboarding() {
       [name]: value,
     }));
 
+    setFieldErrors((previous) => ({
+      ...previous,
+      [name]: "",
+    }));
+
     setValidationError("");
   };
 
@@ -49,8 +57,11 @@ export default function SellerOnboarding() {
     event.preventDefault();
     setValidationError("");
 
-    if (!/^\d{10}$/.test(formData.accountNumber)) {
-      setValidationError("Enter a valid 10-digit bank account number.");
+    const errors = validateProfile(formData);
+    setFieldErrors(errors);
+
+    if (hasErrors(errors)) {
+      setValidationError("Please fix the highlighted fields below.");
       return;
     }
 
@@ -62,7 +73,9 @@ export default function SellerOnboarding() {
         accountNumber: formData.accountNumber,
         accountName: formData.accountName.trim(),
       },
-      ...(formData.slug.trim() ? { slug: formData.slug.trim() } : {}),
+      ...(formData.slug.trim()
+        ? { slug: formData.slug.trim().toLowerCase() }
+        : {}),
     };
 
     try {
@@ -70,9 +83,11 @@ export default function SellerOnboarding() {
       navigate("/seller/dashboard", { replace: true });
     } catch (error) {
       if (error.code === "SLUG_TAKEN") {
-        setValidationError(
-          "This shop URL is already taken. Choose another one."
-        );
+        setFieldErrors((previous) => ({
+          ...previous,
+          slug: "This shop link is already taken by another seller. Choose a different one, or leave it blank to generate one.",
+        }));
+        setValidationError("Please fix the highlighted fields below.");
         return;
       }
 
@@ -102,8 +117,8 @@ export default function SellerOnboarding() {
 
   if (profileError && !needsOnboarding) {
     return (
-      <main className="min-h-[100dvh] bg-background px-4 py-10">
-        <div className="mx-auto flex w-full max-w-[420px] flex-col gap-6">
+      <main className="min-h-[100dvh] bg-background px-4 py-10 md:py-14">
+        <div className="mx-auto flex w-full max-w-[420px] flex-col gap-6 md:max-w-xl">
           <ChopListLogo />
 
           <div className="rounded-xl border border-border bg-card p-5">
@@ -130,8 +145,8 @@ export default function SellerOnboarding() {
   }
 
   return (
-    <main className="min-h-[100dvh] bg-background px-4 py-8">
-      <div className="mx-auto flex w-full max-w-[420px] flex-col">
+    <main className="min-h-[100dvh] bg-background px-4 py-8 md:px-8 md:py-14">
+      <div className="mx-auto flex w-full max-w-[420px] flex-col md:max-w-xl">
         <div className="flex items-center justify-between gap-3">
           <ChopListLogo />
 
@@ -146,20 +161,18 @@ export default function SellerOnboarding() {
           </p>
         </div>
 
-        <div className="mt-2 flex items-center justify-between">
-          <h1 className=" text-2xl font-bold text-foreground">
+        <div className="mt-2">
+          <h1 className=" text-2xl font-bold text-foreground md:text-3xl">
             Set up your shop
           </h1>
-          <Link
-            to="/seller/dashboard"
-            className="text-sm text-foreground font-semibold hover:underline"
-          >
-            SKIP
-          </Link>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            Your business and payment details are required before you can
+            create menus and receive orders.
+          </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="mt-8 space-y-5">
-          <div className="space-y-4 rounded-xl border border-border bg-card p-4">
+        <form onSubmit={handleSubmit} noValidate className="mt-8 space-y-5">
+          <div className="space-y-4 rounded-xl border border-border bg-card p-4 md:grid md:grid-cols-2 md:gap-4 md:space-y-0 md:p-5">
             <div className="space-y-2">
               <label
                 htmlFor="businessName"
@@ -177,7 +190,14 @@ export default function SellerOnboarding() {
                 value={formData.businessName}
                 onChange={handleChange}
                 required
+                aria-invalid={Boolean(fieldErrors.businessName)}
+                aria-describedby={fieldErrors.businessName ? "businessName-error" : undefined}
                 className="w-full rounded-lg border border-border bg-background px-3 py-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-primary"
+              />
+
+              <FieldError
+                id="businessName-error"
+                message={fieldErrors.businessName}
               />
             </div>
 
@@ -198,12 +218,19 @@ export default function SellerOnboarding() {
                 value={formData.phone}
                 onChange={handleChange}
                 required
+                aria-invalid={Boolean(fieldErrors.phone)}
+                aria-describedby={fieldErrors.phone ? "phone-error" : undefined}
                 className="w-full rounded-lg border border-border bg-background px-3 py-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-primary"
+              />
+
+              <FieldError
+                id="phone-error"
+                message={fieldErrors.phone}
               />
             </div>
           </div>
 
-          <div className="space-y-4 rounded-xl border border-border bg-card p-4">
+          <div className="space-y-4 rounded-xl border border-border bg-card p-4 md:p-5">
             <div>
               <h2 className="font-semibold text-foreground">Payment details</h2>
             </div>
@@ -225,7 +252,14 @@ export default function SellerOnboarding() {
                 value={formData.bankName}
                 onChange={handleChange}
                 required
+                aria-invalid={Boolean(fieldErrors.bankName)}
+                aria-describedby={fieldErrors.bankName ? "bankName-error" : undefined}
                 className="w-full rounded-lg border border-border bg-background px-3 py-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-primary"
+              />
+
+              <FieldError
+                id="bankName-error"
+                message={fieldErrors.bankName}
               />
             </div>
 
@@ -249,7 +283,14 @@ export default function SellerOnboarding() {
                 value={formData.accountNumber}
                 onChange={handleChange}
                 required
+                aria-invalid={Boolean(fieldErrors.accountNumber)}
+                aria-describedby={fieldErrors.accountNumber ? "accountNumber-error" : undefined}
                 className="w-full rounded-lg border border-border bg-background px-3 py-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-primary"
+              />
+
+              <FieldError
+                id="accountNumber-error"
+                message={fieldErrors.accountNumber}
               />
             </div>
 
@@ -270,7 +311,14 @@ export default function SellerOnboarding() {
                 value={formData.accountName}
                 onChange={handleChange}
                 required
+                aria-invalid={Boolean(fieldErrors.accountName)}
+                aria-describedby={fieldErrors.accountName ? "accountName-error" : undefined}
                 className="w-full rounded-lg border border-border bg-background px-3 py-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-primary"
+              />
+
+              <FieldError
+                id="accountName-error"
+                message={fieldErrors.accountName}
               />
             </div>
           </div>
@@ -294,7 +342,18 @@ export default function SellerOnboarding() {
               placeholder="e.g. mama-ts-kitchen"
               value={formData.slug}
               onChange={handleChange}
+              aria-invalid={Boolean(fieldErrors.slug)}
+              aria-describedby={fieldErrors.slug ? "slug-error" : undefined}
               className="w-full rounded-lg border border-border bg-card px-3 py-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-primary"
+            />
+
+            <p className="text-xs text-muted-foreground">
+              Leave this blank and we'll create one from your business name.
+            </p>
+
+            <FieldError
+              id="slug-error"
+              message={fieldErrors.slug}
             />
           </div>
 

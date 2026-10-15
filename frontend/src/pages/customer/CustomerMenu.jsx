@@ -37,7 +37,7 @@ export default function CustomerMenu() {
   if (isPending) {
     return (
       <main className="min-h-[100dvh] bg-background">
-        <div className="mx-auto w-full max-w-[420px] px-4">
+        <div className="mx-auto w-full max-w-[420px] px-4 md:max-w-3xl md:px-8 lg:max-w-5xl">
           <CustomerHeader />
 
           <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 text-center">
@@ -55,7 +55,7 @@ export default function CustomerMenu() {
   if (isError) {
     return (
       <main className="min-h-[100dvh] bg-background">
-        <div className="mx-auto w-full max-w-[420px] px-4">
+        <div className="mx-auto w-full max-w-[420px] px-4 md:max-w-3xl md:px-8 lg:max-w-5xl">
           <CustomerHeader />
 
           <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 text-center">
@@ -92,7 +92,7 @@ export default function CustomerMenu() {
   if (!seller) {
     return (
       <main className="min-h-[100dvh] bg-background">
-        <div className="mx-auto w-full max-w-[420px] px-4">
+        <div className="mx-auto w-full max-w-[420px] px-4 md:max-w-3xl md:px-8 lg:max-w-5xl">
           <CustomerHeader />
 
           <div className="py-16 text-center">
@@ -139,15 +139,15 @@ export default function CustomerMenu() {
 
   return (
     <main className="min-h-[100dvh] bg-background">
-      <div className="mx-auto flex min-h-[100dvh] w-full max-w-[420px] flex-col px-4 pb-8">
+      <div className="mx-auto flex min-h-[100dvh] w-full max-w-[420px] flex-col px-4 pb-8 md:max-w-3xl md:px-8 md:pb-12 lg:max-w-5xl">
         <CustomerHeader />
 
-        <section className="space-y-2 py-4">
+        <section className="space-y-2 py-4 md:py-6">
           <p className="text-xs font-semibold uppercase tracking-widest text-primary">
             Today's menu
           </p>
 
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">
+          <h1 className="text-2xl font-bold tracking-tight text-foreground md:text-4xl">
             {seller.businessName}
           </h1>
 
@@ -164,7 +164,7 @@ export default function CustomerMenu() {
               )}
             </>
           ) : (
-            <div className="rounded-xl border border-border bg-card p-4">
+            <div className="rounded-xl border border-border bg-card p-4 md:max-w-lg">
               <h2 className="font-semibold text-foreground">
                 No menu available
               </h2>
@@ -178,52 +178,56 @@ export default function CustomerMenu() {
         </section>
 
         {menu && (
-          <>
-            {!acceptingOrders && (
-              <div className="mb-4 rounded-xl border border-border bg-muted/50 p-3">
-                <p className="text-sm font-medium text-foreground">
-                  Ordering is closed
-                </p>
+          <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start lg:gap-8">
+            <div className="min-w-0">
+              {!acceptingOrders && (
+                <div className="mb-4 rounded-xl border border-border bg-muted/50 p-3">
+                  <p className="text-sm font-medium text-foreground">
+                    Ordering is closed
+                  </p>
 
-                <p className="mt-1 text-sm text-muted-foreground">
-                  You can browse the menu, but you cannot place an order right
-                  now.
-                </p>
-              </div>
-            )}
-
-            <section className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-foreground">
-                  Menu items
-                </h2>
-
-                <span className="text-sm text-muted-foreground">
-                  {menuItems.length} {menuItems.length === 1 ? "item" : "items"}
-                </span>
-              </div>
-
-              {menuItems.length > 0 ? (
-                menuItems.map((item) => (
-                  <MenuItemCard
-                    key={item.id}
-                    item={item}
-                    quantity={quantities[item.id] ?? 0}
-                    acceptingOrders={acceptingOrders}
-                    onQuantityChange={(quantity) =>
-                      handleQuantityChange(item, quantity)
-                    }
-                  />
-                ))
-              ) : (
-                <p className="rounded-xl border border-border p-4 text-sm text-muted-foreground">
-                  There are no food items on this menu yet.
-                </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    You can browse the menu, but you cannot place an order right
+                    now.
+                  </p>
+                </div>
               )}
-            </section>
+
+              <section className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-lg font-semibold text-foreground">
+                    Menu items
+                  </h2>
+
+                  <span className="text-sm text-muted-foreground">
+                    {menuItems.length} {menuItems.length === 1 ? "item" : "items"}
+                  </span>
+                </div>
+
+                <div className="space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0 lg:grid-cols-1 lg:space-y-0">
+                  {menuItems.length > 0 ? (
+                    menuItems.map((item) => (
+                      <MenuItemCard
+                        key={item.id}
+                        item={item}
+                        quantity={quantities[item.id] ?? 0}
+                        acceptingOrders={acceptingOrders}
+                        onQuantityChange={(quantity) =>
+                          handleQuantityChange(item, quantity)
+                        }
+                      />
+                    ))
+                  ) : (
+                    <p className="rounded-xl border border-border p-4 text-sm text-muted-foreground">
+                      There are no food items on this menu yet.
+                    </p>
+                  )}
+                </div>
+              </section>
+            </div>
 
             {acceptingOrders && (
-              <section className="mt-6">
+              <section className="mt-6 lg:sticky lg:top-6 lg:mt-0">
                 <OrderSummary
                   items={selectedItems}
                   onCheckout={handleCheckout}
@@ -231,7 +235,7 @@ export default function CustomerMenu() {
                 />
               </section>
             )}
-          </>
+          </div>
         )}
       </div>
     </main>

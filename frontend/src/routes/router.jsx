@@ -16,6 +16,7 @@ import SellerOrders from "../pages/seller/SellerOrders.jsx";
 import EditMenu from "../pages/seller/EditMenu.jsx";
 
 import ProtectedRoute from "./ProtectedRoute.jsx";
+import RequireSellerProfile from "./RequireSellerProfile.jsx";
 import NotFound from "./NotFound.jsx";
 import EditProfile from "@/pages/seller/EditProfile.jsx";
 import Prep from "@/pages/seller/Prep.jsx";
@@ -49,32 +50,37 @@ export const router = createBrowserRouter([
             element: <SellerOnboarding />,
           },
           {
-            path: "seller/dashboard",
-            element: <SellerDashboard />,
-          },
-          {
-            path: "seller/menu/new",
-            element: <CreateMenu />,
-          },
-          {
-            path: "seller/menu/:id/edit",
-            element: <EditMenu />,
-          },
-          {
-            path: "seller/orders",
-            element: <SellerOrders />,
-          },
-          {
             path: "seller/profile/edit",
             element: <EditProfile />,
           },
           {
-            path: "seller/prep",
-            element: <Prep />,
-          },
-          {
-            path: "seller/delivery",
-            element: <Delivery />,
+            element: <RequireSellerProfile />,
+            children: [
+              {
+                path: "seller/dashboard",
+                element: <SellerDashboard />,
+              },
+              {
+                path: "seller/menu/new",
+                element: <CreateMenu />,
+              },
+              {
+                path: "seller/menu/:id/edit",
+                element: <EditMenu />,
+              },
+              {
+                path: "seller/orders",
+                element: <SellerOrders />,
+              },
+              {
+                path: "seller/prep",
+                element: <Prep />,
+              },
+              {
+                path: "seller/delivery",
+                element: <Delivery />,
+              },
+            ],
           },
         ],
       },

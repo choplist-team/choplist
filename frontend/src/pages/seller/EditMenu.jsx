@@ -8,6 +8,8 @@ import { ArrowLeft, Plus, Trash2, RefreshCw } from "lucide-react";
 import { ApiError } from "@/api/api-client";
 import { getMenuById, updateMenu } from "@/api/seller-api";
 import SellerHeader from "@/components/seller/Header";
+import { FieldError } from "@/components/field-error";
+import { hasErrors, validateMenu } from "@/lib/validation";
 import SellerBottomNav from "@/components/seller/BottomNav";
 import { useCurrentSeller } from "@/hooks/useCurrentSeller";
 
@@ -21,16 +23,6 @@ function toLocalDateTime(value) {
   const offset = date.getTimezoneOffset() * 60_000;
 
   return new Date(date.getTime() - offset).toISOString().slice(0, 16);
-}
-
-function toIsoWithTimezone(value) {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    throw new Error("Enter a valid order cutoff date and time.");
-  }
-
-  return date.toISOString();
 }
 
 function getErrorMessage(error) {
@@ -50,7 +42,7 @@ function LoadingState() {
 
 function PageMessage({ title, message, onBack }) {
   return (
-    <div className="mt-8 rounded-xl border border-border bg-card p-5">
+    <div className="mt-8 rounded-xl border border-border bg-card p-5 lg:mt-0">
       <h1 className="font-semibold text-foreground">{title}</h1>
 
       <p className="mt-2 text-sm leading-6 text-muted-foreground">
@@ -60,7 +52,7 @@ function PageMessage({ title, message, onBack }) {
       <button
         type="button"
         onClick={onBack}
-        className="mt-5 w-full rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground"
+        className="mt-5 w-full rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground md:w-auto md:px-6"
       >
         Back to dashboard
       </button>
@@ -91,8 +83,8 @@ export default function EditMenu() {
 
   if (menuQuery.isPending) {
     return (
-      <main className="min-h-[100dvh] bg-background px-4 py-6">
-        <div className="mx-auto w-full max-w-[420px]">
+      <main className="min-h-[100dvh] bg-background px-4 py-6 md:px-8 md:pt-10 lg:pl-72 lg:pr-8">
+        <div className="mx-auto w-full max-w-[420px] md:max-w-2xl">
           <SellerHeader businessName={seller?.businessName ?? "Your shop"} />
           <LoadingState />
         </div>
@@ -104,8 +96,8 @@ export default function EditMenu() {
 
   if (menuQuery.isError || !menuQuery.data) {
     return (
-      <main className="min-h-[100dvh] bg-background px-4 py-6">
-        <div className="mx-auto w-full max-w-[420px]">
+      <main className="min-h-[100dvh] bg-background px-4 py-6 md:px-8 md:pt-10 lg:pl-72 lg:pr-8">
+        <div className="mx-auto w-full max-w-[420px] md:max-w-2xl">
           <SellerHeader businessName={seller?.businessName ?? "Your shop"} />
 
           <PageMessage
@@ -124,8 +116,8 @@ export default function EditMenu() {
 
   if (menu.status !== "draft") {
     return (
-      <main className="min-h-[100dvh] bg-background px-4 py-6">
-        <div className="mx-auto w-full max-w-[420px]">
+      <main className="min-h-[100dvh] bg-background px-4 py-6 md:px-8 md:pt-10 lg:pl-72 lg:pr-8">
+        <div className="mx-auto w-full max-w-[420px] md:max-w-2xl">
           <SellerHeader businessName={seller?.businessName ?? "Your shop"} />
 
           <PageMessage
@@ -182,6 +174,10 @@ function EditMenuForm({
   );
 
   const [errorMessage, setErrorMessage] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
+
+  const clearFieldError = (name) =>
+    setFieldErrors((current) => ({ ...current, [name]: "" }));
 
   const updateMenuMutation = useMutation({
     mutationFn: (updatedMenu) =>
@@ -202,6 +198,7 @@ function EditMenuForm({
   });
 
   const updateDish = (index, field, value) => {
+    clearFieldError(`item-${index}-${field}`);
     setItems((current) =>
       current.map((item, itemIndex) =>
         itemIndex === index
@@ -221,6 +218,7 @@ function EditMenuForm({
   };
 
   const removeDish = (index) => {
+    setFieldErrors({});
     setItems((current) => current.filter((_, i) => i !== index));
   };
 
@@ -229,12 +227,14 @@ function EditMenuForm({
   };
 
   const updateDeliveryDay = (index, value) => {
+    clearFieldError(`deliveryDay-${index}`);
     setDeliveryDays((current) =>
       current.map((day, i) => (i === index ? value : day)),
     );
   };
 
   const removeDeliveryDay = (index) => {
+    setFieldErrors({});
     setDeliveryDays((current) =>
       current.filter((_, i) => i !== index),
     );
@@ -244,122 +244,40 @@ function EditMenuForm({
     event.preventDefault();
     setErrorMessage("");
 
-    const areas = [
-      ...new Set(
-        areasText
-          .split(",")
-          .map((area) => area.trim())
-          .filter(Boolean),
-      ),
-    ];
-
-    const cleanedItems = items.map((item) => ({
-      name: item.name.trim(),
-      description: item.description.trim(),
-      price: Number(item.price),
-      qty: Number(item.qty),
-    }));
-
-    const cleanedDeliveryDays = deliveryDays.filter(Boolean);
-
-    if (!title.trim()) {
-      setErrorMessage("Enter a title for this menu.");
-      return;
-    }
-
-    if (cleanedItems.length < 1 || cleanedItems.length > 30) {
-      setErrorMessage("Add between 1 and 30 dishes.");
-      return;
-    }
-
-    if (
-      cleanedItems.some(
-        (item) =>
-          !item.name ||
-          !Number.isInteger(item.price) ||
-          item.price < 1 ||
-          !Number.isInteger(item.qty) ||
-          item.qty < 1 ||
-          item.qty > 1000,
-      )
-    ) {
-      setErrorMessage(
-        "Every dish needs a name, a whole-naira price, and 1–1000 portions.",
-      );
-      return;
-    }
-
-    if (areas.length < 1 || areas.length > 30) {
-      setErrorMessage("Enter between 1 and 30 delivery areas.");
-      return;
-    }
-
-    if (
-      cleanedDeliveryDays.length < 1 ||
-      new Set(cleanedDeliveryDays).size !== cleanedDeliveryDays.length
-    ) {
-      setErrorMessage("Choose at least one unique delivery date.");
-      return;
-    }
-
-    if (cleanedDeliveryDays.some((day) => !/^\d{4}-\d{2}-\d{2}$/.test(day))) {
-      setErrorMessage("Enter valid delivery dates.");
-      return;
-    }
-
-    let cutoff;
-
-    try {
-      cutoff = toIsoWithTimezone(cutoffAt);
-    } catch (error) {
-      setErrorMessage(error.message);
-      return;
-    }
-
-    if (new Date(cutoff).getTime() <= Date.now()) {
-      setErrorMessage("The order cutoff must be in the future.");
-      return;
-    }
-
-    const cutoffDate = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Africa/Lagos",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(new Date(cutoff));
-
-    if (cleanedDeliveryDays.some((day) => day < cutoffDate)) {
-      setErrorMessage(
-        "Delivery dates cannot be before the cutoff date in Lagos time.",
-      );
-      return;
-    }
-
-    updateMenuMutation.mutate({
-      title: title.trim(),
-      cutoffAt: cutoff,
-      items: cleanedItems,
-      areas,
-      deliveryDays: cleanedDeliveryDays,
+    const { errors, menu: menuBody } = validateMenu({
+      title,
+      cutoffAt,
+      items,
+      areasText,
+      deliveryDays,
     });
+
+    setFieldErrors(errors);
+
+    if (hasErrors(errors)) {
+      setErrorMessage("Please fix the highlighted fields above.");
+      return;
+    }
+
+    updateMenuMutation.mutate(menuBody);
   };
 
   return (
-    <main className="min-h-[100dvh] bg-background px-4 py-6">
-      <div className="mx-auto w-full max-w-[420px] pb-26">
+    <main className="min-h-[100dvh] bg-background px-4 py-6 md:px-8 md:pt-10 lg:pl-72 lg:pr-8">
+      <div className="mx-auto w-full max-w-[420px] pb-26 md:max-w-2xl lg:pb-6">
         <SellerHeader businessName={seller?.businessName ?? "Your shop"} />
 
         <button
           type="button"
           onClick={() => navigate("/seller/dashboard")}
-          className="mt-8 inline-flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground"
+          className="mt-8 inline-flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground lg:mt-0"
         >
           <ArrowLeft className="h-4 w-4" />
           Back to dashboard
         </button>
 
         <section className="mt-6">
-          <h1 className="text-3xl font-bold text-foreground">
+          <h1 className="text-3xl font-bold text-foreground md:text-4xl">
             Edit menu
           </h1>
 
@@ -368,9 +286,9 @@ function EditMenuForm({
           </p>
         </section>
 
-        <form onSubmit={handleSubmit} className="mt-8 space-y-7">
+        <form onSubmit={handleSubmit} noValidate className="mt-8 space-y-7">
           <section>
-            <div className="space-y-4 rounded-xl border border-border bg-card p-4">
+            <div className="space-y-4 rounded-xl border border-border bg-card p-4 md:grid md:grid-cols-2 md:gap-4 md:space-y-0 md:p-5">
               <div>
                 <label
                   htmlFor="menu-title"
@@ -381,10 +299,20 @@ function EditMenuForm({
 
                 <input
                   id="menu-title"
+                  aria-invalid={Boolean(fieldErrors.title)}
+                  aria-describedby={fieldErrors.title ? "menu-title-error" : undefined}
                   value={title}
-                  onChange={(event) => setTitle(event.target.value)}
+                  onChange={(event) => {
+                    setTitle(event.target.value);
+                    clearFieldError("title");
+                  }}
                   required
-                  className="mt-2 w-full rounded-lg border border-border bg-card px-3 py-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  className="aria-invalid:border-destructive mt-2 w-full rounded-lg border border-border bg-card px-3 py-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                />
+
+                <FieldError
+                  id="menu-title-error"
+                  message={fieldErrors.title}
                 />
               </div>
 
@@ -398,11 +326,21 @@ function EditMenuForm({
 
                 <input
                   id="menu-cutoff"
+                  aria-invalid={Boolean(fieldErrors.cutoffAt)}
+                  aria-describedby={fieldErrors.cutoffAt ? "menu-cutoff-error" : undefined}
                   type="datetime-local"
                   value={cutoffAt}
-                  onChange={(event) => setCutoffAt(event.target.value)}
+                  onChange={(event) => {
+                    setCutoffAt(event.target.value);
+                    clearFieldError("cutoffAt");
+                  }}
                   required
-                  className="w-full rounded-lg border border-border bg-card px-3 py-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  className="aria-invalid:border-destructive w-full rounded-lg border border-border bg-card px-3 py-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                />
+
+                <FieldError
+                  id="menu-cutoff-error"
+                  message={fieldErrors.cutoffAt}
                 />
               </div>
             </div>
@@ -422,7 +360,7 @@ function EditMenuForm({
             {items.map((item, index) => (
               <div
                 key={index}
-                className="space-y-4 rounded-xl border border-border bg-card p-4"
+                className="space-y-4 rounded-xl border border-border bg-card p-4 md:p-5"
               >
                 <div className="flex items-center justify-between">
                   <h3 className="font-medium text-foreground">
@@ -451,13 +389,20 @@ function EditMenuForm({
 
                   <input
                     id={`dish-name-${index}`}
+                    aria-invalid={Boolean(fieldErrors[`item-${index}-name`])}
+                    aria-describedby={fieldErrors[`item-${index}-name`] ? `dish-name-${index}-error` : undefined}
                     value={item.name}
                     onChange={(event) =>
                       updateDish(index, "name", event.target.value)
                     }
                     placeholder="e.g. Jollof rice"
                     required
-                    className="w-full rounded-lg border border-border bg-background px-3 py-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    className="aria-invalid:border-destructive w-full rounded-lg border border-border bg-background px-3 py-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  />
+
+                  <FieldError
+                    id={`dish-name-${index}-error`}
+                    message={fieldErrors[`item-${index}-name`]}
                   />
                 </div>
 
@@ -471,13 +416,20 @@ function EditMenuForm({
 
                   <textarea
                     id={`dish-description-${index}`}
+                    aria-invalid={Boolean(fieldErrors[`item-${index}-description`])}
+                    aria-describedby={fieldErrors[`item-${index}-description`] ? `dish-description-${index}-error` : undefined}
                     value={item.description}
                     onChange={(event) =>
                       updateDish(index, "description", event.target.value)
                     }
                     placeholder="Describe the dish"
                     rows={2}
-                    className="w-full rounded-lg border border-border bg-background px-3 py-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    className="aria-invalid:border-destructive w-full rounded-lg border border-border bg-background px-3 py-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  />
+
+                  <FieldError
+                    id={`dish-description-${index}-error`}
+                    message={fieldErrors[`item-${index}-description`]}
                   />
                 </div>
 
@@ -492,6 +444,8 @@ function EditMenuForm({
 
                     <input
                       id={`dish-price-${index}`}
+                      aria-invalid={Boolean(fieldErrors[`item-${index}-price`])}
+                      aria-describedby={fieldErrors[`item-${index}-price`] ? `dish-price-${index}-error` : undefined}
                       type="number"
                       min="1"
                       step="1"
@@ -501,7 +455,12 @@ function EditMenuForm({
                         updateDish(index, "price", event.target.value)
                       }
                       required
-                      className="w-full rounded-lg border border-border bg-background px-3 py-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      className="aria-invalid:border-destructive w-full rounded-lg border border-border bg-background px-3 py-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    />
+
+                    <FieldError
+                      id={`dish-price-${index}-error`}
+                      message={fieldErrors[`item-${index}-price`]}
                     />
                   </div>
 
@@ -515,6 +474,8 @@ function EditMenuForm({
 
                     <input
                       id={`dish-qty-${index}`}
+                      aria-invalid={Boolean(fieldErrors[`item-${index}-qty`])}
+                      aria-describedby={fieldErrors[`item-${index}-qty`] ? `dish-qty-${index}-error` : undefined}
                       type="number"
                       min="1"
                       max="1000"
@@ -525,7 +486,12 @@ function EditMenuForm({
                         updateDish(index, "qty", event.target.value)
                       }
                       required
-                      className="w-full rounded-lg border border-border bg-background px-3 py-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      className="aria-invalid:border-destructive w-full rounded-lg border border-border bg-background px-3 py-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    />
+
+                    <FieldError
+                      id={`dish-qty-${index}-error`}
+                      message={fieldErrors[`item-${index}-qty`]}
                     />
                   </div>
                 </div>
@@ -541,10 +507,12 @@ function EditMenuForm({
               <Plus className="h-4 w-4" />
               Add a dish
             </button>
+
+            <FieldError message={fieldErrors.items} />
           </section>
 
           <section>
-            <div className="space-y-4 rounded-xl border border-border bg-card p-4">
+            <div className="space-y-4 rounded-xl border border-border bg-card p-4 md:p-5">
               <div className="space-y-3">
                 <div className="flex items-center justify-between gap-3">
                   <label className="text-sm font-semibold text-foreground">
@@ -561,30 +529,36 @@ function EditMenuForm({
                 </div>
 
                 {deliveryDays.map((day, index) => (
-                  <div key={index} className="flex items-center gap-2">
-                    <input
-                      type="date"
-                      value={day}
-                      onChange={(event) =>
-                        updateDeliveryDay(index, event.target.value)
-                      }
-                      required
-                      aria-label={`Delivery day ${index + 1}`}
-                      className="min-w-0 flex-1 rounded-lg border border-border bg-card px-3 py-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                    />
+                  <div key={index} className="space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="date"
+                        aria-invalid={Boolean(fieldErrors[`deliveryDay-${index}`])}
+                        value={day}
+                        onChange={(event) =>
+                          updateDeliveryDay(index, event.target.value)
+                        }
+                        required
+                        aria-label={`Delivery day ${index + 1}`}
+                        className="aria-invalid:border-destructive min-w-0 flex-1 rounded-lg border border-border bg-card px-3 py-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      />
 
-                    {deliveryDays.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => removeDeliveryDay(index)}
-                        aria-label={`Remove delivery day ${index + 1}`}
-                        className="rounded-md p-2 text-destructive hover:bg-destructive/10"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    )}
+                      {deliveryDays.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeDeliveryDay(index)}
+                          aria-label={`Remove delivery day ${index + 1}`}
+                          className="rounded-md p-2 text-destructive hover:bg-destructive/10"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                    <FieldError message={fieldErrors[`deliveryDay-${index}`]} />
                   </div>
                 ))}
+
+                <FieldError message={fieldErrors.deliveryDays} />
               </div>
 
               <div className="space-y-2">
@@ -597,12 +571,22 @@ function EditMenuForm({
 
                 <textarea
                   id="delivery-areas"
+                  aria-invalid={Boolean(fieldErrors.areas)}
+                  aria-describedby={fieldErrors.areas ? "delivery-areas-error" : undefined}
                   value={areasText}
-                  onChange={(event) => setAreasText(event.target.value)}
+                  onChange={(event) => {
+                    setAreasText(event.target.value);
+                    clearFieldError("areas");
+                  }}
                   placeholder="Yaba, Surulere, Lekki"
                   rows={3}
                   required
-                  className="w-full rounded-lg border border-border bg-card px-3 py-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  className="aria-invalid:border-destructive w-full rounded-lg border border-border bg-card px-3 py-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                />
+
+                <FieldError
+                  id="delivery-areas-error"
+                  message={fieldErrors.areas}
                 />
 
                 <p className="text-xs text-muted-foreground">
@@ -624,7 +608,7 @@ function EditMenuForm({
           <button
             type="submit"
             disabled={updateMenuMutation.isPending}
-            className="w-full rounded-lg bg-primary px-4 py-3 font-semibold text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+            className="w-full rounded-lg bg-primary px-4 py-3 font-semibold text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 md:ml-auto md:block md:w-auto md:px-8"
           >
             {updateMenuMutation.isPending
               ? "Saving changes..."
