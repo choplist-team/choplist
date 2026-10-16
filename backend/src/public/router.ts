@@ -51,6 +51,11 @@ function paymentInstructions(seller: SellerDoc, order: OrderDoc) {
 
 // Deliberately leaves out the address and full phone number: anyone holding
 // the ref and the last 4 digits sees only what they need to track the order.
+//
+// deliveryCode: the 6 digits the customer reads out when the food arrives.
+// Shown ONLY while the order is out for delivery (null before and after), and
+// only when the order was loaded with .select('+deliveryCode') (the lookup
+// route does this; other routes never see it).
 function toPublicOrder(order: OrderDoc) {
   return {
     ref: order.ref,
@@ -59,6 +64,7 @@ function toPublicOrder(order: OrderDoc) {
     lines: order.lines.map((line) => ({ name: line.name, unitPrice: line.unitPrice, qty: line.qty })),
     total: order.total,
     delivery: { area: order.delivery.area, day: order.delivery.day },
+    deliveryCode: order.status === 'out_for_delivery' ? (order.deliveryCode ?? null) : null,
     createdAt: order.createdAt,
   };
 }
@@ -107,7 +113,7 @@ export function createPublicRouter(rateLimits: RateLimitSettings): Router {
     }
     const { ref, phoneLast4 } = parsed.data;
 
-    const order = await OrderModel.findOne({ ref });
+    const order = await OrderModel.findOne({ ref }).select('+deliveryCode');
     if (!order || !order.customer.phone.endsWith(phoneLast4)) throw orderNotFound();
 
     const seller = await SellerModel.findById(order.sellerId);

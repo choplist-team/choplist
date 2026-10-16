@@ -1,8 +1,10 @@
 import { Router, type Request } from 'express';
+import { z } from 'zod';
 import { authenticate, currentSellerId, requireSeller } from '../auth/middleware.js';
 import type { AuthProvider } from '../auth/provider.js';
 import { AppError } from '../errors.js';
 import { OrderModel, REF_PATTERN, type OrderDoc } from '../models/order.js';
+import { CODE_PATTERN, MAX_CODE_ATTEMPTS, codesMatch, generateDeliveryCode } from './delivery.js';
 import { toSellerOrder } from './seller-view.js';
 import { returnStock } from './stock.js';
 
@@ -24,6 +26,10 @@ async function loadOrNotFound(filter: ReturnType<typeof orderFilter>): Promise<O
   return order;
 }
 
+const confirmBody = z.object({
+  code: z.string().trim().regex(CODE_PATTERN, 'Enter the 6-digit delivery code'),
+});
+
 export function createOrderRouter(auth: AuthProvider): Router {
   const router = Router();
   router.use(authenticate(auth), requireSeller);
@@ -44,14 +50,94 @@ export function createOrderRouter(auth: AuthProvider): Router {
     }
 
     const order = await loadOrNotFound(filter);
-    if (order.status === 'paid') {
+    if (order.status !== 'cancelled') {
+      // Already paid, out for delivery or delivered: nothing to change.
       res.json(toSellerOrder(order));
       return;
     }
     throw new AppError(409, 'ORDER_CANCELLED', 'This order was cancelled and cannot be marked paid');
   });
 
+  // paid -> out_for_delivery, and a fresh 6-digit code is made for the customer.
+  // The status change is one conditional write, so two taps can't make two
+  // codes. Idempotent: repeating it on an order already out for delivery (or
+  // delivered) returns it unchanged and keeps the same code.
+  router.patch('/:ref/out-for-delivery', async (req, res) => {
+    const filter = orderFilter(req);
+    const started = await OrderModel.findOneAndUpdate(
+      { ...filter, status: 'paid' },
+      {
+        $set: {
+          status: 'out_for_delivery',
+          outForDeliveryAt: new Date(),
+          deliveryCode: generateDeliveryCode(),
+          codeAttempts: 0,
+        },
+      },
+      { returnDocument: 'after' },
+    );
+    if (started) {
+      res.json(toSellerOrder(started));
+      return;
+    }
+
+    const order = await loadOrNotFound(filter);
+    if (order.status === 'out_for_delivery' || order.status === 'delivered') {
+      res.json(toSellerOrder(order));
+      return;
+    }
+    if (order.status === 'cancelled') {
+      throw new AppError(409, 'ORDER_CANCELLED', 'This order was cancelled');
+    }
+    throw new AppError(409, 'ORDER_NOT_PAID', 'Mark the order as paid before sending it out for delivery');
+  });
+
+  // out_for_delivery -> delivered, when the seller types the customer's code.
+  //
+  // An attempt is counted BEFORE the code is checked, in one conditional write
+  // that only matches while attempts remain. That way, parallel guesses can't
+  // sneak past the limit: each one reserves its own attempt first.
+  router.patch('/:ref/confirm-delivery', async (req, res) => {
+    const { code } = confirmBody.parse(req.body);
+    const filter = orderFilter(req);
+
+    const attempt = await OrderModel.findOneAndUpdate(
+      { ...filter, status: 'out_for_delivery', codeAttempts: { $lt: MAX_CODE_ATTEMPTS } },
+      { $inc: { codeAttempts: 1 } },
+      { returnDocument: 'after' },
+    ).select('+deliveryCode');
+
+    if (!attempt) {
+      const order = await loadOrNotFound(filter);
+      if (order.status === 'delivered') {
+        res.json(toSellerOrder(order));
+        return;
+      }
+      if (order.status === 'out_for_delivery') {
+        throw new AppError(429, 'DELIVERY_CODE_LOCKED', 'Too many wrong codes for this order. Contact support.');
+      }
+      throw new AppError(409, 'NOT_OUT_FOR_DELIVERY', 'This order is not out for delivery');
+    }
+
+    if (!attempt.deliveryCode || !codesMatch(code, attempt.deliveryCode)) {
+      const left = MAX_CODE_ATTEMPTS - attempt.codeAttempts;
+      throw new AppError(
+        400,
+        'WRONG_DELIVERY_CODE',
+        left > 0 ? `Wrong code. ${left} ${left === 1 ? 'try' : 'tries'} left.` : 'Wrong code. No tries left.',
+      );
+    }
+
+    const delivered = await OrderModel.findOneAndUpdate(
+      { _id: attempt._id, status: 'out_for_delivery' },
+      { $set: { status: 'delivered', deliveredAt: new Date() }, $unset: { deliveryCode: '' } },
+      { returnDocument: 'after' },
+    );
+    res.json(toSellerOrder(delivered ?? (await loadOrNotFound(filter))));
+  });
+
   // pending or paid -> cancelled, and the portions go back on sale.
+  // Once an order is out for delivery it can no longer be cancelled here.
   //
   // The stock must come back exactly once, even if the seller taps twice or
   // two requests race. The status change is one conditional write that only
@@ -67,7 +153,8 @@ export function createOrderRouter(auth: AuthProvider): Router {
     );
 
     if (!cancelled) {
-      // Not found, or already cancelled (idempotent: same answer, no stock change).
+      // Not found, already cancelled, or already out for delivery / delivered
+      // (idempotent: same answer, no stock change).
       res.json(toSellerOrder(await loadOrNotFound(filter)));
       return;
     }

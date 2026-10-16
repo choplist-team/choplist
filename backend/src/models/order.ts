@@ -1,7 +1,7 @@
 import { Schema, model, type HydratedDocument, type InferSchemaType } from 'mongoose';
 import { DAY_PATTERN, PHONE_PATTERN, wholeNumber } from './fields.js';
 
-export const ORDER_STATUSES = ['pending', 'paid', 'cancelled'] as const;
+export const ORDER_STATUSES = ['pending', 'paid', 'out_for_delivery', 'delivered', 'cancelled'] as const;
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
 // "CL-" plus 5 characters with no 0/O/1/I, so a customer reading it out on
@@ -66,6 +66,14 @@ const orderSchema = new Schema(
     status: { type: String, enum: ORDER_STATUSES, required: true, default: 'pending' },
     paidAt: Date,
     cancelledAt: Date,
+
+    // Delivery confirmation. The 6-digit code is shown to the customer and
+    // typed in by the seller at the door. select:false keeps it out of every
+    // normal query: it is only read with .select('+deliveryCode').
+    outForDeliveryAt: Date,
+    deliveredAt: Date,
+    deliveryCode: { type: String, select: false },
+    codeAttempts: { type: Number, default: 0 },
   },
   { timestamps: true },
 );
