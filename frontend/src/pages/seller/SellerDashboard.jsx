@@ -145,7 +145,7 @@ export default function SellerDashboard() {
     isError: areMenusError,
     error: menusError,
     refetch: refetchMenus,
-  } = useGetMenus({enabled: !isSellerPending && !needsProfile && isSellerError});
+  } = useGetMenus();
 
    const menusNeedProfile =
     menusError instanceof ApiError && menusError.code === "PROFILE_REQUIRED";
