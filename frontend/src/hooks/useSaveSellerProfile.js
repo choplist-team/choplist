@@ -7,7 +7,15 @@ export const useSaveSellerProfile = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (profile) => saveSellerProfile(profile, getToken),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["current-seller"] }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["current-seller"],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["menus"],
+        }),
+      ]);
+    },
   });
 };
