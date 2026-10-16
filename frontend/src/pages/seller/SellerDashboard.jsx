@@ -128,14 +128,7 @@ export default function SellerDashboard() {
     refetch: refetchSeller,
   } = useCurrentSeller();
 
-  const {
-    data: menusData,
-    isPending: areMenusPending,
-    isError: areMenusError,
-    error: menusError,
-    refetch: refetchMenus,
-  } = useGetMenus();
-
+ 
   const openMenuMutation = useOpenMenu();
   const closeMenuMutation = useCloseMenu();
 
@@ -144,8 +137,20 @@ export default function SellerDashboard() {
   const needsProfile =
     sellerError instanceof ApiError && sellerError.code === "PROFILE_REQUIRED";
 
-  const menusNeedProfile =
+ 
+
+     const {
+    data: menusData,
+    isPending: areMenusPending,
+    isError: areMenusError,
+    error: menusError,
+    refetch: refetchMenus,
+  } = useGetMenus({enabled: !isSellerPending && !needsProfile && isSellerError});
+
+   const menusNeedProfile =
     menusError instanceof ApiError && menusError.code === "PROFILE_REQUIRED";
+
+
 
   if (isSellerPending) {
     return (

@@ -50,16 +50,17 @@ export const router = createBrowserRouter([
             element: <SellerOnboarding />,
           },
           {
+            path: "seller/dashboard",
+            element: <SellerDashboard />,
+          },
+          {
             path: "seller/profile/edit",
             element: <EditProfile />,
           },
           {
             element: <RequireSellerProfile />,
             children: [
-              {
-                path: "seller/dashboard",
-                element: <SellerDashboard />,
-              },
+            
               {
                 path: "seller/menu/new",
                 element: <CreateMenu />,
