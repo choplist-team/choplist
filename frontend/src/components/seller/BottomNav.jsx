@@ -11,8 +11,9 @@ import {
   LogOut,
   ChevronUp,
 } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+// import { useQuery } from "@tanstack/react-query";
 import { ChopListLogo } from "@/components/choplist-logo";
+import { useCurrentSeller } from "@/hooks/useCurrentSeller";
 
 const navigationItems = [
   {
@@ -43,10 +44,12 @@ export default function SellerBottomNav() {
 
   const { signOut } = useAuth();
   const navigate = useNavigate();
-  const { data: seller } = useQuery({
-    queryKey: ["current-seller"],
-    enabled: false,
-  });
+  // const { data: seller } = useQuery({
+  //   queryKey: ["current-seller"],
+  //   enabled: false,
+  // });
+
+  const {data: seller } = useCurrentSeller
 
   const handleLogout = async () => {
     setIsSigningOut(true);

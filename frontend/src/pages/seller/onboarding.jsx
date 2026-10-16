@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "@clerk/react";
-import { Navigate, useNavigate } from "react-router-dom";
+import { Link, Navigate, useNavigate } from "react-router-dom";
 import { ApiError } from "@/api/api-client";
 import { ChopListLogo } from "@/components/choplist-logo";
 import { useCurrentSeller } from "@/hooks/useCurrentSeller";
@@ -150,9 +150,9 @@ export default function SellerOnboarding() {
         <div className="flex items-center justify-between gap-3">
           <ChopListLogo />
 
-          <span className="text-xs font-semibold tracking-wide text-muted-foreground">
-            SELLER SETUP
-          </span>
+          <Link to="/seller/dashboard" className="text-sm font-semibold hover:underline">
+          SKIP</Link>
+
         </div>
 
         <div className="mt-8">
