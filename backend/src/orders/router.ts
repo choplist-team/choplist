@@ -4,7 +4,13 @@ import { authenticate, currentSellerId, requireSeller } from '../auth/middleware
 import type { AuthProvider } from '../auth/provider.js';
 import { AppError } from '../errors.js';
 import { OrderModel, REF_PATTERN, type OrderDoc } from '../models/order.js';
-import { CODE_PATTERN, MAX_CODE_ATTEMPTS, codesMatch, generateDeliveryCode } from './delivery.js';
+import {
+  CODE_PATTERN,
+  MAX_CODE_ATTEMPTS,
+  MAX_CODE_RESETS,
+  codesMatch,
+  generateDeliveryCode,
+} from './delivery.js';
 import { toSellerOrder } from './seller-view.js';
 import { returnStock } from './stock.js';
 
@@ -134,6 +140,44 @@ export function createOrderRouter(auth: AuthProvider): Router {
       { returnDocument: 'after' },
     );
     res.json(toSellerOrder(delivered ?? (await loadOrNotFound(filter))));
+  });
+
+  // out_for_delivery -> out_for_delivery with a NEW code and the wrong-guess
+  // counter back to 0. This is how a locked order is freed, or how a seller
+  // asks for a fresh code if the customer lost theirs.
+  //
+  // One conditional write that only matches while resets remain, so ten taps
+  // at once still use at most MAX_CODE_RESETS. The response never contains the
+  // code: only the customer may see it. ($exists: false covers orders that
+  // went out for delivery before this field existed.)
+  router.patch('/:ref/reset-delivery-code', async (req, res) => {
+    const filter = orderFilter(req);
+    const reset = await OrderModel.findOneAndUpdate(
+      {
+        ...filter,
+        status: 'out_for_delivery',
+        $or: [{ codeResets: { $lt: MAX_CODE_RESETS } }, { codeResets: { $exists: false } }],
+      },
+      {
+        $set: { deliveryCode: generateDeliveryCode(), codeAttempts: 0 },
+        $inc: { codeResets: 1 },
+      },
+      { returnDocument: 'after' },
+    );
+    if (reset) {
+      res.json(toSellerOrder(reset));
+      return;
+    }
+
+    const order = await loadOrNotFound(filter);
+    if (order.status === 'out_for_delivery') {
+      throw new AppError(
+        409,
+        'DELIVERY_RESET_LIMIT',
+        'This order has used all its code resets. Contact support.',
+      );
+    }
+    throw new AppError(409, 'NOT_OUT_FOR_DELIVERY', 'This order is not out for delivery');
   });
 
   // pending or paid -> cancelled, and the portions go back on sale.

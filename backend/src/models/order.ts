@@ -74,6 +74,7 @@ const orderSchema = new Schema(
     deliveredAt: Date,
     deliveryCode: { type: String, select: false },
     codeAttempts: { type: Number, default: 0 },
+    codeResets: { type: Number, default: 0 },
   },
   { timestamps: true },
 );
