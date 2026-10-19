@@ -11,9 +11,8 @@ import {
   LogOut,
   ChevronUp,
 } from "lucide-react";
-// import { useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { ChopListLogo } from "@/components/choplist-logo";
-import { useCurrentSeller } from "@/hooks/useCurrentSeller";
 
 const navigationItems = [
   {
@@ -44,12 +43,10 @@ export default function SellerBottomNav() {
 
   const { signOut } = useAuth();
   const navigate = useNavigate();
-  // const { data: seller } = useQuery({
-  //   queryKey: ["current-seller"],
-  //   enabled: false,
-  // });
-
-  const {data: seller } = useCurrentSeller
+  const { data: seller } = useQuery({
+    queryKey: ["current-seller"],
+    enabled: false,
+  });
 
   const handleLogout = async () => {
     setIsSigningOut(true);
@@ -94,7 +91,9 @@ export default function SellerBottomNav() {
             >
               {({ isActive }) => (
                 <>
-                  <Icon className={`h-5 w-5 ${isActive ? "stroke-[2.5]" : ""}`} />
+                  <Icon
+                    className={`h-5 w-5 ${isActive ? "stroke-[2.5]" : ""}`}
+                  />
                   <span>{label}</span>
                 </>
               )}
@@ -147,16 +146,13 @@ export default function SellerBottomNav() {
               {({ isActive }) => (
                 <>
                   <Icon
-                    className={`h-5 w-5 ${
-                      isActive ? "stroke-[2.5]" : ""
-                    }`}
+                    className={`h-5 w-5 ${isActive ? "stroke-[2.5]" : ""}`}
                   />
                   <span>{label}</span>
                 </>
               )}
             </NavLink>
           ))}
-
 
           <div className="relative flex justify-center">
             {isAccountMenuOpen && (
