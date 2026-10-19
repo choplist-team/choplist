@@ -96,6 +96,42 @@ export const cancelOrder = (ref, getToken) => {
   );
 };
 
+export const outForDelivery = (ref, getToken) => {
+  return apiRequest(
+    `/orders/${encodeURIComponent(ref)}/out-for-delivery`,
+    {
+      method: "PATCH",
+      requiresAuth: true,
+    },
+    getToken
+  );
+};
+
+export const confirmDelivery = (ref, code, getToken) => {
+  return apiRequest(
+    `/orders/${encodeURIComponent(ref)}/confirm-delivery`,
+    {
+      method: "PATCH",
+      requiresAuth: true,
+      body: {code}
+    },
+    getToken
+  );
+};
+
+
+export const resetDeliveryCode = (ref, getToken) => {
+  return apiRequest(
+    `/orders/${encodeURIComponent(ref)}/reset-delivery-code`,
+    {
+      method: "PATCH",
+      requiresAuth: true,
+    },
+    getToken
+  );
+};
+
+
 export const getMenuPrepSheet = (id, getToken, paidOnly = false) => {
   return apiRequest(
     `/menus/${encodeURIComponent(id)}/prep-sheet?paidOnly=${paidOnly}`,

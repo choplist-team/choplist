@@ -21,6 +21,9 @@ import SellerBottomNav from "@/components/seller/BottomNav";
 import { useCurrentSeller } from "@/hooks/useCurrentSeller";
 import { useGetMenus } from "@/hooks/useGetMenus";
 import { useGetMenuOrders } from "@/hooks/use-get-menu-orders";
+import { useOutForDelivery } from "@/hooks/useOutForDelivery";
+import { useConfirmDelivery } from "@/hooks/useConfirmDelivery";
+import { useResetDeliveryCode } from "@/hooks/useResetDelivery";
 
 const formatPrice = (amount) =>
   new Intl.NumberFormat("en-NG", {
@@ -47,6 +50,8 @@ const formatDeliveryDay = (day) =>
 const statusStyles = {
   pending: "bg-warning text-foreground",
   paid: "bg-soft-green text-primary",
+  out_for_delivery: "bg-blue-100 text-blue-800",
+  delivered: "bg-green-100 text-green-800",
   cancelled: "bg-muted text-muted-foreground",
 };
 
@@ -76,9 +81,22 @@ function EmptyState({ title, description }) {
   );
 }
 
-function OrderCard({ order, onMarkPaid, onCancel, busy }) {
+function OrderCard({
+  order,
+  onMarkPaid,
+  onCancel,
+  onOutForDelivery,
+  onConfirmDelivery,
+  onResetDeliveryCode,
+  busy,
+  deliveryLocked,
+  resetLimitReached,
+}) {
+  const [deliveryCode, setDeliveryCode] = useState("");
   const canMarkPaid = order.status === "pending";
   const canCancel = order.status === "pending" || order.status === "paid";
+  const canSendForDelivery = order.status === "paid";
+  const isOutForDelivery = order.status === "out_for_delivery";
 
   const handleCancel = () => {
     const confirmed = window.confirm(
@@ -205,7 +223,7 @@ function OrderCard({ order, onMarkPaid, onCancel, busy }) {
         )}
       </div>
 
-      {(canMarkPaid || canCancel) && (
+      {(canMarkPaid || canCancel || canSendForDelivery || isOutForDelivery) && (
         <div className="mt-5 space-y-2 border-t border-border pt-4">
           {canMarkPaid && (
             <button
@@ -230,6 +248,90 @@ function OrderCard({ order, onMarkPaid, onCancel, busy }) {
               Cancel order
             </button>
           )}
+
+          {canSendForDelivery && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onOutForDelivery(order.ref)}
+              className="w-full rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Mark out for delivery
+            </button>
+          )}
+
+          {isOutForDelivery && (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Enter the delivery code provided by the customer to confirm that
+                the order has arrived.
+              </p>
+
+              <label
+                htmlFor={`delivery-code-${order.ref}`}
+                className="block text-sm font-medium text-foreground"
+              >
+                Customer delivery code
+              </label>
+
+              <input
+                id={`delivery-code-${order.ref}`}
+                type="text"
+                inputMode="numeric"
+                autoComplete="off"
+                maxLength={6}
+                value={deliveryCode}
+                onChange={(event) =>
+                  setDeliveryCode(event.target.value.replace(/\D/g, ""))
+                }
+                placeholder="Enter 6-digit code"
+                className="w-full rounded-lg border border-border bg-background px-3 py-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              />
+
+              <button
+                type="button"
+                disabled={busy || deliveryCode.length !== 6}
+                onClick={() => {
+                  onConfirmDelivery(order.ref, deliveryCode);
+                  setDeliveryCode("");
+                }}
+                className="w-full rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Confirm delivery
+              </button>
+
+              {deliveryLocked && (
+                <p className="text-sm text-destructive">
+                  Delivery code attempts are locked. Reset the code before
+                  trying again.
+                </p>
+              )}
+
+              {resetLimitReached ? (
+                <p className="text-sm text-destructive">
+                  You have reached the delivery-code reset limit. Contact
+                  support.
+                </p>
+              ) : (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    const confirmed = window.confirm(
+                      `Reset the delivery code for order ${order.ref}?`
+                    );
+
+                    if (confirmed) {
+                      onResetDeliveryCode(order.ref);
+                    }
+                  }}
+                  className="w-full rounded-lg border border-border px-4 py-3 text-sm font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Reset delivery code
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
     </article>
@@ -247,6 +349,8 @@ export default function SellerOrders() {
   const [status, setStatus] = useState("all");
   const [actionError, setActionError] = useState("");
   const [actionSuccess, setActionSuccess] = useState("");
+  const [deliveryLockedOrders, setDeliveryLockedOrders] = useState([]);
+  const [resetLimitOrders, setResetLimitOrders] = useState([]);
 
   const {
     data: menusData,
@@ -263,6 +367,10 @@ export default function SellerOrders() {
     menus.find((menu) => menu.status === "open")?.id ||
     menus[0]?.id ||
     "";
+
+  const outForDeliveryMutation = useOutForDelivery(menuId);
+  const confirmDeliveryMutation = useConfirmDelivery(menuId);
+  const resetDeliveryCodeMutation = useResetDeliveryCode(menuId);
 
   const selectedMenu = menus.find((menu) => menu.id === menuId);
 
@@ -324,7 +432,12 @@ export default function SellerOrders() {
     },
   });
 
-  const busy = markPaidMutation.isPending || cancelMutation.isPending;
+  const busy =
+    markPaidMutation.isPending ||
+    cancelMutation.isPending ||
+    outForDeliveryMutation.isPending ||
+    confirmDeliveryMutation.isPending ||
+    resetDeliveryCodeMutation.isPending;
 
   const orders = ordersData?.orders ?? [];
 
@@ -338,6 +451,93 @@ export default function SellerOrders() {
     setActionError("");
     setActionSuccess("");
     cancelMutation.mutate(ref);
+  };
+
+  const handleOutForDelivery = (ref) => {
+    setActionError("");
+    setActionSuccess("");
+
+    outForDeliveryMutation.mutate(ref, {
+      onSuccess: () => {
+        setActionSuccess(`Order ${ref} is now out for delivery.`);
+      },
+      onError: (error) => {
+        setActionError(
+          error instanceof ApiError
+            ? error.message
+            : "Could not mark the order out for delivery."
+        );
+      },
+    });
+  };
+
+  const handleConfirmDelivery = (ref, code) => {
+    setActionError("");
+    setActionSuccess("");
+
+    confirmDeliveryMutation.mutate(
+      { ref, code },
+      {
+        onSuccess: () => {
+          setDeliveryLockedOrders((previous) =>
+            previous.filter((orderRef) => orderRef !== ref)
+          );
+
+          setResetLimitOrders((previous) =>
+            previous.filter((orderRef) => orderRef !== ref)
+          );
+
+          setActionSuccess(`Delivery confirmed for order ${ref}.`);
+        },
+        onError: (error) => {
+          setActionError(
+            error instanceof ApiError
+              ? error.message
+              : "Could not confirm delivery."
+          );
+
+          if (error?.code === "DELIVERY_CODE_LOCKED") {
+            setDeliveryLockedOrders((previous) =>
+              previous.includes(ref) ? previous : [...previous, ref]
+            );
+          }
+        },
+      }
+    );
+  };
+
+  const handleResetDeliveryCode = (ref) => {
+    setActionError("");
+    setActionSuccess("");
+
+    resetDeliveryCodeMutation.mutate(ref, {
+      onSuccess: () => {
+        setDeliveryLockedOrders((previous) =>
+          previous.filter((orderRef) => orderRef !== ref)
+        );
+
+        setResetLimitOrders((previous) =>
+          previous.filter((orderRef) => orderRef !== ref)
+        );
+
+        setActionSuccess(
+          `Delivery code reset for order ${ref}. Ask the customer to refresh their order page.`
+        );
+      },
+      onError: (error) => {
+        setActionError(
+          error instanceof ApiError
+            ? error.message
+            : "Could not reset the delivery code."
+        );
+
+        if (error?.code === "DELIVERY_RESET_LIMIT") {
+          setResetLimitOrders((previous) =>
+            previous.includes(ref) ? previous : [...previous, ref]
+          );
+        }
+      },
+    });
   };
 
   const handleFilterChange = (nextStatus) => {
@@ -453,11 +653,13 @@ export default function SellerOrders() {
                 </button>
               </div>
 
-              <div className="mt-4 grid grid-cols-4 gap-1 rounded-xl bg-muted p-1 md:max-w-md">
+              <div className="mt-4 grid grid-cols-3 gap-1 rounded-xl bg-muted p-1 md:max-w-md">
                 {[
                   { label: "All", value: "all" },
                   { label: "Pending", value: "pending" },
                   { label: "Paid", value: "paid" },
+                  { label: "Out for delivery", value: "out_for_delivery" },
+                  { label: "Delivered", value: "delivered" },
                   { label: "Cancelled", value: "cancelled" },
                 ].map((filter) => (
                   <button
@@ -533,6 +735,11 @@ export default function SellerOrders() {
                       order={order}
                       onMarkPaid={handleMarkPaid}
                       onCancel={handleCancel}
+                      onOutForDelivery={handleOutForDelivery}
+                      onConfirmDelivery={handleConfirmDelivery}
+                      onResetDeliveryCode={handleResetDeliveryCode}
+                      deliveryLocked={deliveryLockedOrders.includes(order.ref)}
+                      resetLimitReached={resetLimitOrders.includes(order.ref)}
                       busy={busy}
                     />
                   ))}
