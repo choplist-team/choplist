@@ -61,7 +61,13 @@ Every error, on every route, has this shape:
 | 409 | `CUTOFF_PASSED` | Opening a draft whose cut-off is in the past (edit it first) |
 | 409 | `ORDERING_CLOSED` | The menu is closed, not yet open, or past its cut-off |
 | 409 | `SOLD_OUT` | Not enough stock for at least one item; nothing was taken. The message names it, e.g. `Not enough left: only 2 Jollof rice left` |
-| 409 | `ORDER_CANCELLED` | Marking a cancelled order paid |
+| 409 | `ORDER_CANCELLED` | Paying, sending out or confirming a cancelled order |
+| 409 | `ORDER_NOT_PAID` | Sending an order out for delivery before it is paid |
+| 409 | `ORDER_DELIVERED` | Cancelling or sending out an order that is already delivered |
+| 409 | `ORDER_NOT_OUT_FOR_DELIVERY` | Confirming or resetting the code of an order that is not out for delivery |
+| 400 | `INVALID_DELIVERY_CODE` | Wrong delivery code; the message says how many attempts are left |
+| 409 | `DELIVERY_CODE_LOCKED` | 5 wrong codes: even the right code is refused until the seller resets it |
+| 409 | `DELIVERY_RESET_LIMIT` | The code was already reset twice for this order |
 | 413 | `PAYLOAD_TOO_LARGE` | Request body is over 20 KB |
 | 429 | `RATE_LIMITED` | Too many orders or lookups from one network; wait (see the `RateLimit` header) |
 | 500 | `INTERNAL_ERROR` | Server bug or outage; details are logged, never returned |
@@ -331,9 +337,15 @@ All routes need `Authorization: Bearer <token>` and a seller profile. Orders are
 addressed by their reference (what the seller sees in the bank transfer
 description), not case-sensitive. Another seller's order or menu is a `404`.
 
-Order status: **pending -> paid**, and **pending or paid -> cancelled**.
+Order status: **pending -> paid -> out_for_delivery -> delivered**, and
+**cancelled** from any of them except `delivered`. The five values are exactly
+`pending`, `paid`, `out_for_delivery`, `delivered`, `cancelled` (underscores).
 Cancelling puts the order's portions back on sale. Payment is matched by hand;
 ChopList never moves money.
+
+Delivery confirmation: when the order goes out for delivery the server makes a
+6-digit code that only the customer can see (on their order page). The rider
+asks for it at the door and the seller enters it to mark the order delivered.
 
 The seller's order object (includes the customer's phone and address):
 
@@ -349,14 +361,24 @@ The seller's order object (includes the customer's phone and address):
   "total": 7000,
   "paidAt": null,
   "cancelledAt": null,
+  "outForDeliveryAt": null,
+  "deliveredAt": null,
   "createdAt": "2026-10-09T21:25:46.870Z"
 }
 ```
 
+The delivery code is never part of this object, in any seller route.
+
 ### GET /api/menus/:id/orders
 
-All orders for one of the seller's menus, newest first. Optional
-`?status=pending|paid|cancelled`.
+All orders for one of the seller's menus, newest first. Optional `?status=`
+with any of `pending`, `paid`, `out_for_delivery`, `delivered`, `cancelled`:
+
+- several at once, comma separated (`?status=paid,out_for_delivery`) or repeated
+  (`?status=paid&status=delivered`);
+- empty or missing means no filter. There is no `all` value: leave `status` out;
+- statuses use **underscores**. `out-for-delivery` and `all` are a
+  `400 VALIDATION_ERROR` that lists the valid ones.
 
 ```
 GET /api/menus/6710b2d3e4b0a1b2c3d4e5f7/orders?status=pending
@@ -373,8 +395,9 @@ Errors: `400 VALIDATION_ERROR` (unknown status), `404 MENU_NOT_FOUND`.
 
 ### PATCH /api/orders/:ref/paid
 
-Marks a pending order paid. No body. Safe to repeat: a paid order is returned
-unchanged, with the same `paidAt`.
+Marks a pending order paid. No body. Safe to repeat: an order that is already
+paid, out for delivery or delivered is returned unchanged (same `paidAt`; its
+status is never moved back).
 
 ```
 PATCH /api/orders/CL-7KQ2M/paid
@@ -387,10 +410,12 @@ Errors: `404 ORDER_NOT_FOUND`, `409 ORDER_CANCELLED`.
 
 ### PATCH /api/orders/:ref/cancel
 
-Cancels a pending or paid order and puts its portions back on sale (also after
-the menu has closed). No body. Safe to repeat: the stock comes back exactly
-once, even if several cancel requests arrive together. Refunding a paid order is
-done by the seller outside ChopList.
+Cancels a pending, paid or out-for-delivery order and puts its portions back on
+sale (also after the menu has closed). Cancelling in transit also destroys the
+delivery code. No body. Safe to repeat: the stock comes back exactly once, even
+if several cancel requests arrive together. Refunding a paid order is done by the
+seller outside ChopList. A **delivered** order cannot be cancelled and its stock
+is not returned.
 
 ```
 PATCH /api/orders/CL-7KQ2M/cancel
@@ -399,13 +424,84 @@ Authorization: Bearer <token>
 
 Response `200`: the seller order object, `status: "cancelled"`, `cancelledAt` set.
 
-Errors: `404 ORDER_NOT_FOUND`.
+Errors: `404 ORDER_NOT_FOUND`, `409 ORDER_DELIVERED`.
+
+### PATCH /api/orders/:ref/out-for-delivery
+
+The rider is leaving: `paid` -> `out_for_delivery`. No body. This creates the
+6-digit delivery code, which only the customer can see. Safe to repeat: an order
+already out for delivery is returned unchanged and keeps its code.
+
+```
+PATCH /api/orders/CL-7KQ2M/out-for-delivery
+Authorization: Bearer <token>
+```
+
+Response `200`: the seller order object, `status: "out_for_delivery"`,
+`outForDeliveryAt` set. There is no code in it.
+
+Errors: `404 ORDER_NOT_FOUND`, `409 ORDER_NOT_PAID` (pay it first),
+`409 ORDER_DELIVERED`, `409 ORDER_CANCELLED`.
+
+### PATCH /api/orders/:ref/confirm-delivery
+
+At the door the customer reads out their code; the seller sends it here.
+
+```
+PATCH /api/orders/CL-7KQ2M/confirm-delivery
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+```json
+{ "code": "482915" }
+```
+
+`code` must be a **string of exactly 6 digits** (leading zeros matter:
+`"012345"`). Anything else is a `400 VALIDATION_ERROR` and is not counted as a
+guess.
+
+Response `200`: the seller order object, `status: "delivered"`, `deliveredAt`
+set; the code is gone. Safe to repeat: confirming an already delivered order
+returns it unchanged.
+
+A wrong code is `400 INVALID_DELIVERY_CODE`, and the message says how many
+attempts are left (`"That code is not correct. 3 attempts left."`). After **5**
+wrong codes the order is locked: even the correct code is refused with
+`409 DELIVERY_CODE_LOCKED` until the seller resets it.
+
+Errors: `400 VALIDATION_ERROR`, `400 INVALID_DELIVERY_CODE`, `404 ORDER_NOT_FOUND`,
+`409 DELIVERY_CODE_LOCKED`, `409 ORDER_NOT_OUT_FOR_DELIVERY` (pending or paid),
+`409 ORDER_CANCELLED`.
+
+### PATCH /api/orders/:ref/reset-delivery-code
+
+Makes a new code (always different from the old one) and gives 5 fresh attempts.
+For a lost code or a locked order. No body. Only while the order is out for
+delivery, and **at most 2 times per order**.
+
+```
+PATCH /api/orders/CL-7KQ2M/reset-delivery-code
+Authorization: Bearer <token>
+```
+
+Response `200`: the seller order object (still `out_for_delivery`, no code in
+it). The customer's page shows the new code.
+
+Errors: `404 ORDER_NOT_FOUND`, `409 ORDER_NOT_OUT_FOR_DELIVERY`,
+`409 DELIVERY_RESET_LIMIT` (a third reset; the seller should contact support).
 
 ## Reports (seller)
 
 Both are worked out from the orders on every request, so they are always up to
-date (nothing is stored). Cancelled orders never count. `paidOnly=true` counts
-only paid orders; the value must be exactly `true` or `false`.
+date (nothing is stored). Cancelled orders never count. `paidOnly=true` leaves
+out unpaid orders (it keeps `paid`, `out_for_delivery` and, on the prep sheet,
+`delivered`); the value must be exactly `true` or `false`.
+
+- **Prep sheet:** counts every order that is not cancelled, delivered ones
+  included (the food was still cooked).
+- **Delivery list:** only orders still to deliver: `pending`, `paid` and
+  `out_for_delivery`. Delivered orders drop off the list.
 
 ### GET /api/menus/:id/prep-sheet
 
@@ -564,6 +660,10 @@ Response `201`:
   "order": {
     "ref": "CL-7KQ2M",
     "status": "pending",
+    "deliveryCode": null,
+    "deliveryCodeHidden": false,
+    "outForDeliveryAt": null,
+    "deliveredAt": null,
     "customerName": "Ada Obi",
     "lines": [{ "name": "Jollof rice", "unitPrice": 3500, "qty": 2 }],
     "total": 7000,
@@ -578,12 +678,18 @@ Response `201`:
     "accountName": "Titilayo Adebayo",
     "instructions": "Transfer ₦7,000 to Titilayo Adebayo, GTBank 0123456789, and write CL-7KQ2M as the transfer description so Mama T's Kitchen can match your payment."
   },
-  "seller": { "businessName": "Mama T's Kitchen", "slug": "mama-ts-kitchen", "phone": "+2348031234567" }
+  "seller": { "businessName": "Mama T's Kitchen", "slug": "mama-ts-kitchen", "phone": "+2348031234567" },
+  "accessKey": "k3J9x0Qm1ZbT7yVd2WnR4uLpA8sCfHeG"
 }
 ```
 
 Show the customer `payment.instructions` and the reference prominently. The order
 stays `pending` until the seller marks it paid.
+
+`accessKey` is a secret for this one order, returned **only in this response**.
+The server keeps just a hash, so it cannot be shown again. The frontend must
+store it (with the reference) and send it as `X-Order-Key` when looking the order
+up; it is what lets the customer, and not the seller, see the delivery code.
 
 Errors: `400 VALIDATION_ERROR`, `400 ITEM_NOT_FOUND`, `400 INVALID_AREA`,
 `400 INVALID_DELIVERY_DAY`, `404 MENU_NOT_FOUND`, `409 ORDERING_CLOSED`,
@@ -597,10 +703,37 @@ of the phone number used to order. The reference is not case-sensitive.
 
 ```
 GET /api/public/orders/CL-7KQ2M?phoneLast4=2222
+X-Order-Key: <the accessKey from POST /api/public/orders>
 ```
 
+`X-Order-Key` is optional, but without it the customer never sees the delivery
+code (see below). Send it as a header, not in the URL.
+
 Response `200`: same body as `POST /api/public/orders` (`order`, `payment`,
-`seller`). The delivery address and full phone number are never returned.
+`seller`) but without `accessKey`. The delivery address and full phone number are
+never returned. While the order is out for delivery:
+
+```json
+{
+  "order": {
+    "ref": "CL-7KQ2M",
+    "status": "out_for_delivery",
+    "deliveryCode": "482915",
+    "deliveryCodeHidden": false,
+    "outForDeliveryAt": "2026-10-17T09:12:00.000Z",
+    "deliveredAt": null,
+    "...": "other order fields as above"
+  },
+  "payment": { "...": "as above" },
+  "seller": { "...": "as above" }
+}
+```
+
+`deliveryCode` is a 6-digit string and is `null` in every other status. It is
+also `null` when `X-Order-Key` is missing or wrong; then, if the order is out for
+delivery, `deliveryCodeHidden` is `true` (otherwise `false`). Orders placed before
+this feature have no key, so they never show a code. The seller cannot read the
+code anywhere: it is not in any seller response.
 
 Errors: `400 VALIDATION_ERROR` (`phoneLast4` missing or not 4 digits),
 `404 ORDER_NOT_FOUND` (wrong reference or wrong digits, same error for both),
@@ -627,8 +760,13 @@ Errors: `400 VALIDATION_ERROR` (`phoneLast4` missing or not 4 digits),
 2. `POST /api/public/orders`. On `201`, show `payment.instructions` and the
    reference. On `409 SOLD_OUT`, show `error.message` (it says what is left) and
    reload the menu.
-3. Later: `GET /api/public/orders/:ref?phoneLast4=1234` to see whether the seller
-   has marked it paid.
+   **Save `accessKey` from the response** (for example in `localStorage`, next to
+   the reference). It is shown only this once.
+3. Later: `GET /api/public/orders/:ref?phoneLast4=1234`, sending the saved key in
+   the `X-Order-Key` header, to follow the status. While the status is
+   `out_for_delivery`, show `order.deliveryCode` big on the page: the customer
+   reads it to the rider. If `deliveryCodeHidden` is `true`, say "open this
+   order on the device you ordered from".
 
 ### The seller runs the week
 
@@ -639,3 +777,7 @@ Errors: `400 VALIDATION_ERROR` (`phoneLast4` missing or not 4 digits),
 3. After the cut-off: `GET /api/menus/:id/prep-sheet` (what to cook) and
    `GET /api/menus/:id/delivery-list` (who gets what, by area), then
    `POST /api/menus/:id/close`.
+4. On delivery day: `PATCH /api/orders/:ref/out-for-delivery` when the rider
+   leaves. At the door the customer reads out their code, and the seller sends it
+   with `PATCH /api/orders/:ref/confirm-delivery`. If the code is lost or the
+   order is locked, `PATCH /api/orders/:ref/reset-delivery-code`.

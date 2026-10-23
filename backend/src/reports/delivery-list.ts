@@ -1,7 +1,7 @@
 import type { Types } from 'mongoose';
 import type { MenuDoc } from '../models/menu.js';
 import { OrderModel } from '../models/order.js';
-import { countedStatuses } from './prep-sheet.js';
+import { deliveryStatuses } from './prep-sheet.js';
 
 type DeliveryStop = {
   ref: string;
@@ -27,7 +27,7 @@ export async function deliveryList(
       $match: {
         sellerId,
         menuId: menu._id,
-        status: { $in: countedStatuses(options.paidOnly) },
+        status: { $in: deliveryStatuses(options.paidOnly) },
         ...(options.day ? { 'delivery.day': options.day } : {}),
       },
     },

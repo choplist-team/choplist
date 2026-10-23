@@ -3,6 +3,7 @@ import { AppError } from '../errors.js';
 import { MenuModel, type MenuDoc } from '../models/menu.js';
 import { OrderModel, type OrderDoc } from '../models/order.js';
 import { SellerModel, type SellerDoc } from '../models/seller.js';
+import { accessKeyMatches, generateAccessKey } from '../orders/delivery-code.js';
 import { placeOrder } from '../orders/place-order.js';
 import { createRateLimiters, type RateLimitSettings } from '../middleware/rate-limit.js';
 import { lookupSchema, placeOrderSchema } from './schema.js';
@@ -51,10 +52,19 @@ function paymentInstructions(seller: SellerDoc, order: OrderDoc) {
 
 // Deliberately leaves out the address and full phone number: anyone holding
 // the ref and the last 4 digits sees only what they need to track the order.
-function toPublicOrder(order: OrderDoc) {
+//
+// deliveryCode is null unless the caller passes it in, and the lookup does that
+// only while the order is out for delivery AND the request proved it is the
+// customer (the access key). deliveryCodeHidden tells the page why it is null:
+// true = "in transit, but this browser does not hold the key".
+function toPublicOrder(order: OrderDoc, delivery: { code: string | null; hidden: boolean } = { code: null, hidden: false }) {
   return {
     ref: order.ref,
     status: order.status,
+    deliveryCode: delivery.code,
+    deliveryCodeHidden: delivery.hidden,
+    outForDeliveryAt: order.outForDeliveryAt ?? null,
+    deliveredAt: order.deliveredAt ?? null,
     customerName: order.customer.name,
     lines: order.lines.map((line) => ({ name: line.name, unitPrice: line.unitPrice, qty: line.qty })),
     total: order.total,
@@ -83,7 +93,9 @@ export function createPublicRouter(rateLimits: RateLimitSettings): Router {
 
   router.post('/orders', limit.orders, async (req, res) => {
     const input = placeOrderSchema.parse(req.body);
-    const order = await placeOrder(input);
+    // The customer's secret for this order. Shown once, below; only its hash is kept.
+    const accessKey = generateAccessKey();
+    const order = await placeOrder(input, { accessKey });
 
     const seller = await SellerModel.findById(order.sellerId);
     // The menu's seller always exists; if not, the data is broken: fail loudly.
@@ -93,6 +105,7 @@ export function createPublicRouter(rateLimits: RateLimitSettings): Router {
       order: toPublicOrder(order),
       payment: paymentInstructions(seller, order),
       seller: toPublicSeller(seller),
+      accessKey,
     });
   });
 
@@ -107,14 +120,22 @@ export function createPublicRouter(rateLimits: RateLimitSettings): Router {
     }
     const { ref, phoneLast4 } = parsed.data;
 
-    const order = await OrderModel.findOne({ ref });
+    // The ONLY query that asks for the secrets by name.
+    const order = await OrderModel.findOne({ ref }).select('+deliveryCode +accessKeyHash');
     if (!order || !order.customer.phone.endsWith(phoneLast4)) throw orderNotFound();
 
     const seller = await SellerModel.findById(order.sellerId);
     if (!seller) throw new Error(`Seller ${order.sellerId.toString()} missing for order ${order.ref}`);
 
+    // The ref and phone digits are known to the seller too, so they prove
+    // nothing. The access key (a header, not the URL, so it stays out of logs
+    // and history) is what separates the customer from the seller.
+    const inTransit = order.status === 'out_for_delivery' && Boolean(order.deliveryCode);
+    const isCustomer = accessKeyMatches(req.get('x-order-key'), order.accessKeyHash);
+    const delivery = { code: inTransit && isCustomer ? (order.deliveryCode ?? null) : null, hidden: inTransit && !isCustomer };
+
     res.json({
-      order: toPublicOrder(order),
+      order: toPublicOrder(order, delivery),
       payment: paymentInstructions(seller, order),
       seller: toPublicSeller(seller),
     });

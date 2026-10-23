@@ -2,9 +2,16 @@ import type { Types } from 'mongoose';
 import type { MenuDoc } from '../models/menu.js';
 import { OrderModel } from '../models/order.js';
 
-// Which orders count: never cancelled ones. paidOnly narrows to paid.
-export function countedStatuses(paidOnly: boolean) {
-  return paidOnly ? ['paid'] : ['pending', 'paid'];
+// Which orders to cook for: every order that is not cancelled, delivered ones
+// included (the food was still made). paidOnly drops the unpaid ones.
+export function prepStatuses(paidOnly: boolean) {
+  return paidOnly ? ['paid', 'out_for_delivery', 'delivered'] : ['pending', 'paid', 'out_for_delivery', 'delivered'];
+}
+
+// Which orders the rider still has to deal with: delivered ones are done, so
+// they leave the list. paidOnly drops the unpaid ones.
+export function deliveryStatuses(paidOnly: boolean) {
+  return paidOnly ? ['paid', 'out_for_delivery'] : ['pending', 'paid', 'out_for_delivery'];
 }
 
 type ItemTotal = { _id: Types.ObjectId; portions: number; orders: number };
@@ -17,7 +24,7 @@ type Summary = { orders: number; amount: number };
 export async function prepSheet(sellerId: Types.ObjectId, menu: MenuDoc, paidOnly: boolean) {
   const [result] = await OrderModel.aggregate<{ items: ItemTotal[]; summary: Summary[] }>([
     // Uses the { sellerId, menuId, createdAt } index.
-    { $match: { sellerId, menuId: menu._id, status: { $in: countedStatuses(paidOnly) } } },
+    { $match: { sellerId, menuId: menu._id, status: { $in: prepStatuses(paidOnly) } } },
     {
       // Two answers from one pass over the matched orders.
       $facet: {

@@ -2,6 +2,7 @@ import { Types, mongo } from 'mongoose';
 import { AppError } from '../errors.js';
 import { MenuModel, type MenuDoc } from '../models/menu.js';
 import { OrderModel, type OrderDoc } from '../models/order.js';
+import { hashAccessKey } from './delivery-code.js';
 import { generateRef as defaultGenerateRef } from './reference.js';
 import { returnStock, takeStock, type StockLine } from './stock.js';
 
@@ -18,6 +19,9 @@ export type PlaceOrderInput = {
 export type PlaceOrderOptions = {
   // Injected by tests to force reference-code collisions.
   generateRef?: () => string;
+  // The customer's access key (see delivery-code.ts). Only its hash is stored;
+  // the caller keeps the key itself to hand to the customer once.
+  accessKey?: string;
 };
 
 const MAX_REF_ATTEMPTS = 5;
@@ -122,6 +126,7 @@ export async function placeOrder(input: PlaceOrderInput, options: PlaceOrderOpti
           note: input.note,
           lines: orderLines,
           total,
+          ...(options.accessKey ? { accessKeyHash: hashAccessKey(options.accessKey) } : {}),
         });
       } catch (err) {
         if (!isRefCollision(err) || attempt >= MAX_REF_ATTEMPTS) throw err;
