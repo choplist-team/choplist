@@ -1,8 +1,16 @@
 import { Schema, model, type HydratedDocument, type InferSchemaType } from 'mongoose';
 import { DAY_PATTERN, PHONE_PATTERN, wholeNumber } from './fields.js';
 
-export const ORDER_STATUSES = ['pending', 'paid', 'cancelled'] as const;
+// The life of an order: pending -> paid -> out_for_delivery -> delivered, and
+// cancelled from any of them except delivered. The spellings are part of the API
+// (the frontend sends and shows them), so they use underscores, not hyphens.
+// The model's enum, the ?status= filter and the docs all read this one list.
+export const ORDER_STATUSES = ['pending', 'paid', 'out_for_delivery', 'delivered', 'cancelled'] as const;
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
+
+export function isOrderStatus(value: string): value is OrderStatus {
+  return (ORDER_STATUSES as readonly string[]).includes(value);
+}
 
 // "CL-" plus 5 characters with no 0/O/1/I, so a customer reading it out on
 // WhatsApp can't confuse them.
