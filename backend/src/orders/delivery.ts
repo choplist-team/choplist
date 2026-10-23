@@ -137,9 +137,12 @@ export async function confirmDelivery(filter: OrderFilter, code: string): Promis
 // delivery, and at most MAX_CODE_RESETS times per order.
 //
 // Compare-and-swap: we read the current code only to make a DIFFERENT one, and
-// the write requires the stored code to still be that one. If two resets race,
-// the second finds the code already changed and does nothing more (it returns
-// the order as the first left it), so a double tap uses one reset, not two.
+// the write requires the stored code to still be that one. Two resets that read
+// at the same moment cannot both win: the second finds the code already changed
+// and changes nothing. But a reset that arrives after the first has finished is
+// an ordinary second reset and counts as one, so a double tap MAY use two. What
+// is guaranteed, however many requests arrive, is the cap: never more than
+// MAX_CODE_RESETS resets, and every code issued is different from the last.
 export async function resetDeliveryCode(filter: OrderFilter): Promise<OrderDoc> {
   const current = await OrderModel.findOne({ ...filter, status: 'out_for_delivery' }).select('+deliveryCode');
 
