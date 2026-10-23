@@ -731,9 +731,24 @@ never returned. While the order is out for delivery:
 
 `deliveryCode` is a 6-digit string and is `null` in every other status. It is
 also `null` when `X-Order-Key` is missing or wrong; then, if the order is out for
-delivery, `deliveryCodeHidden` is `true` (otherwise `false`). Orders placed before
-this feature have no key, so they never show a code. The seller cannot read the
-code anywhere: it is not in any seller response.
+delivery, `deliveryCodeHidden` is `true` (otherwise `false`). So
+`deliveryCodeHidden: true` means "the code exists but this request did not prove
+it comes from the customer", **not** that something is broken. The seller cannot
+read the code anywhere: it is not in any seller response.
+
+The frontend keeps the key in `localStorage` (`frontend/src/lib/order-keys.js`),
+saved from the `POST /api/public/orders` response and sent by `lookupOrder`. So
+the code shows on the browser that placed the order. On another device, or after
+the browser data is cleared, the key is gone and the page shows
+`deliveryCodeHidden`.
+
+**Orders that cannot show a code.** Orders placed before keys existed have no
+key, so no browser can ever show their code; the same applies to a customer who
+lost their key. There is deliberately no way for a seller to issue a new key (a
+seller could use it to read the code). The safe handling is manual: cancel the
+order and have the customer reorder, or the seller marks it delivered by phone.
+`npm run audit:delivery` (in `backend/`) lists out-for-delivery orders with no
+code or no key, by reference only. It is read-only.
 
 Errors: `400 VALIDATION_ERROR` (`phoneLast4` missing or not 4 digits),
 `404 ORDER_NOT_FOUND` (wrong reference or wrong digits, same error for both),

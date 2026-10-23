@@ -269,6 +269,14 @@ export default function OrderLookup() {
               </div>
             )}
 
+            {order?.deliveryCodeHidden && (
+              <div className="rounded-xl border border-border bg-card p-5 text-sm leading-relaxed text-foreground">
+                Your order is out for delivery. For your safety, the delivery
+                code only shows on the device you placed the order from. Open
+                this page there to see it.
+              </div>
+            )}
+
             {deliveryCode != null && (
               <div className="rounded-xl border border-primary/20 bg-soft-green p-5">
                 <p className="text-sm font-medium text-muted-foreground">
