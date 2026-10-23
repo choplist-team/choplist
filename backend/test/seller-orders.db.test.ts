@@ -105,6 +105,37 @@ describe.skipIf(!testDbUri)('seller order actions on a real MongoDB', () => {
       expect((await as('seller_a').get(`/api/menus/${menuId}/orders?status=bogus`)).status).toBe(400);
     });
 
+    it('filters by every status, comma lists and repeated parameters', async () => {
+      // One order per state. The delivery routes do not exist yet, so set the status directly.
+      const pending = await newOrder(1, 'P');
+      const paid = await newOrder(1, 'Q');
+      const inTransit = await newOrder(1, 'R');
+      const delivered = await newOrder(1, 'S');
+      await OrderModel.updateOne({ ref: paid }, { $set: { status: 'paid' } });
+      await OrderModel.updateOne({ ref: inTransit }, { $set: { status: 'out_for_delivery' } });
+      await OrderModel.updateOne({ ref: delivered }, { $set: { status: 'delivered' } });
+
+      const refs = async (query: string) => {
+        const res = await as('seller_a').get(`/api/menus/${menuId}/orders${query}`);
+        expect(res.status).toBe(200);
+        return res.body.orders.map((o: { ref: string }) => o.ref).sort();
+      };
+      expect(await refs('?status=out_for_delivery')).toEqual([inTransit]);
+      expect(await refs('?status=delivered')).toEqual([delivered]);
+      expect(await refs('?status=paid,out_for_delivery')).toEqual([paid, inTransit].sort());
+      expect(await refs('?status=paid&status=delivered')).toEqual([paid, delivered].sort());
+      expect(await refs('?status=')).toEqual([pending, paid, inTransit, delivered].sort());
+      expect(await refs('')).toEqual([pending, paid, inTransit, delivered].sort());
+    });
+
+    it('unknown statuses are a 400 VALIDATION_ERROR, including "all" and the hyphenated spelling', async () => {
+      for (const bad of ['all', 'out-for-delivery', 'paid,nope']) {
+        const res = await as('seller_a').get(`/api/menus/${menuId}/orders?status=${bad}`);
+        expect(res.status).toBe(400);
+        expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      }
+    });
+
     it("another seller's menu is 404, not an empty list", async () => {
       await newOrder(1);
       const res = await as('seller_b').get(`/api/menus/${menuId}/orders`);

@@ -5,8 +5,9 @@ import { authenticate, currentSellerId, requireSeller } from '../auth/middleware
 import type { AuthProvider } from '../auth/provider.js';
 import { AppError } from '../errors.js';
 import { MenuModel, type MenuDoc } from '../models/menu.js';
-import { ORDER_STATUSES, OrderModel } from '../models/order.js';
+import { OrderModel } from '../models/order.js';
 import { toSellerOrder } from '../orders/seller-view.js';
+import { statusFilterSchema } from '../orders/status-filter.js';
 import { deliveryList } from '../reports/delivery-list.js';
 import { prepSheet } from '../reports/prep-sheet.js';
 import { calendarDay } from '../validation/day.js';
@@ -33,7 +34,7 @@ async function loadOrNotFound(filter: ReturnType<typeof menuFilter>): Promise<Me
   return menu;
 }
 
-const orderListQuery = z.object({ status: z.enum(ORDER_STATUSES).optional() });
+const orderListQuery = z.object({ status: statusFilterSchema });
 
 // Query strings are always text: "false" is a non-empty string, which
 // JavaScript (and z.coerce.boolean) treat as true. Accept exactly "true" or
@@ -71,7 +72,8 @@ export function createMenuRouter(auth: AuthProvider): Router {
     res.json(toMenuResponse(await loadOrNotFound(menuFilter(req))));
   });
 
-  // All orders for one of my menus, newest first; optionally one status.
+  // All orders for one of my menus, newest first; optionally only some statuses
+  // (?status=paid, ?status=paid,out_for_delivery or ?status=paid&status=delivered).
   // The menu is checked first so another seller's menu id is a 404, not an
   // empty list.
   router.get('/:id/orders', async (req, res) => {
@@ -82,7 +84,7 @@ export function createMenuRouter(auth: AuthProvider): Router {
     const orders = await OrderModel.find({
       sellerId: filter.sellerId,
       menuId: filter._id,
-      ...(status ? { status } : {}),
+      ...(status ? { status: { $in: status } } : {}),
     }).sort({ createdAt: -1 });
     res.json({ orders: orders.map(toSellerOrder) });
   });
