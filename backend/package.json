@@ -15,6 +15,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "seed:demo": "tsx --env-file=../.env scripts/seed-demo.ts",
+    "audit:delivery": "tsx --env-file=../.env scripts/audit-delivery-orders.ts",
     "clerk:login-test": "node --env-file=../.env scripts/clerk-login-test.mjs"
   },
   "dependencies": {
