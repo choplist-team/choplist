@@ -58,6 +58,8 @@ export default function OrderLookup() {
   const order = response?.order ?? response;
   const payment = response?.payment;
   const seller = response?.seller;
+  const deliveryCode = order?.deliveryCode;
+
 
   return (
     <main className="min-h-[100dvh] bg-background px-4">
@@ -111,7 +113,9 @@ export default function OrderLookup() {
               id="phoneLast4"
               value={phoneLast4}
               onChange={(event) => {
-                setPhoneLast4(event.target.value.replace(/\D/g, "").slice(0, 4));
+                setPhoneLast4(
+                  event.target.value.replace(/\D/g, "").slice(0, 4)
+                );
                 setFieldErrors((current) => ({ ...current, phoneLast4: "" }));
               }}
               aria-invalid={Boolean(fieldErrors.phoneLast4)}
@@ -127,7 +131,10 @@ export default function OrderLookup() {
               required
             />
 
-            <FieldError id="phoneLast4-error" message={fieldErrors.phoneLast4} />
+            <FieldError
+              id="phoneLast4-error"
+              message={fieldErrors.phoneLast4}
+            />
           </div>
 
           <Button type="submit" className="w-full" disabled={lookup.isFetching}>
@@ -158,9 +165,9 @@ export default function OrderLookup() {
               {lookup.error?.code === "ORDER_NOT_FOUND"
                 ? "No order matches that reference and phone number. Check the reference on your confirmation and make sure the last 4 digits match the phone number you ordered with."
                 : lookup.error?.code === "NETWORK_ERROR"
-                  ? "We couldn't reach the server. Check your internet connection and try again."
-                  : lookup.error?.message ||
-                    "Please check your order reference and phone number, then try again."}
+                ? "We couldn't reach the server. Check your internet connection and try again."
+                : lookup.error?.message ||
+                  "Please check your order reference and phone number, then try again."}
             </p>
           </div>
         )}
@@ -258,6 +265,22 @@ export default function OrderLookup() {
                 <p className="text-xs text-muted-foreground">
                   Your order remains pending until the seller confirms your
                   payment.
+                </p>
+              </div>
+            )}
+
+            {deliveryCode != null && (
+              <div className="rounded-xl border border-primary/20 bg-soft-green p-5">
+                <p className="text-sm font-medium text-muted-foreground">
+                  Your delivery confirmation code
+                </p>
+
+                <p className="mt-2 text-3xl font-bold tracking-[0.3em] text-primary">
+                  {deliveryCode}
+                </p>
+
+                <p className="mt-3 text-sm leading-relaxed text-foreground">
+                  Give this code to the rider only when your food arrives.
                 </p>
               </div>
             )}
