@@ -1,4 +1,5 @@
 import { Schema, model, type HydratedDocument, type InferSchemaType } from 'mongoose';
+import { DELIVERY_CODE_PATTERN } from '../orders/delivery-code.js';
 import { DAY_PATTERN, PHONE_PATTERN, wholeNumber } from './fields.js';
 
 // The life of an order: pending -> paid -> out_for_delivery -> delivered, and
@@ -74,6 +75,21 @@ const orderSchema = new Schema(
     status: { type: String, enum: ORDER_STATUSES, required: true, default: 'pending' },
     paidAt: Date,
     cancelledAt: Date,
+    outForDeliveryAt: Date,
+    deliveredAt: Date,
+
+    // Delivery confirmation (see orders/delivery-code.ts). The two secrets are
+    // select:false: a normal query leaves them out, and only code that asks for
+    // them by name (.select('+deliveryCode')) can read them. That is a safety
+    // net against leaking by accident; the real guarantee is that the seller's
+    // response is built from an explicit list of fields (orders/seller-view.ts).
+    deliveryCode: { type: String, select: false, match: DELIVERY_CODE_PATTERN },
+    // Wrong codes entered since the code was made or last reset.
+    deliveryCodeAttempts: { type: Number, default: 0, min: 0 },
+    // Times the seller has reset the code for this order.
+    deliveryCodeResets: { type: Number, default: 0, min: 0 },
+    // SHA-256 of the key given to the customer when they ordered. Never the key.
+    accessKeyHash: { type: String, select: false },
   },
   { timestamps: true },
 );
