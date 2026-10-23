@@ -28,8 +28,8 @@ try {
   for (const { ref, problem } of problems) {
     console.log(
       problem === 'no-code'
-        ? `${ref}  no delivery code stored: cannot be confirmed. Cancel it, or mark it delivered by phone.`
-        : `${ref}  placed before access keys: the customer cannot see the code. Cancel it and have them reorder, or mark it delivered by phone.`,
+        ? `${ref}  no delivery code stored: it cannot be confirmed. The only way to close it is to cancel it.`
+        : `${ref}  no access key: the customer cannot see the code, so it cannot be confirmed. The only way to close it is to cancel it (stock goes back on sale; note a delivered meal outside ChopList).`,
     );
   }
 } finally {

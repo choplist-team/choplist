@@ -742,11 +742,16 @@ the code shows on the browser that placed the order. On another device, or after
 the browser data is cleared, the key is gone and the page shows
 `deliveryCodeHidden`.
 
-**Orders that cannot show a code.** Orders placed before keys existed have no
-key, so no browser can ever show their code; the same applies to a customer who
-lost their key. There is deliberately no way for a seller to issue a new key (a
-seller could use it to read the code). The safe handling is manual: cancel the
-order and have the customer reorder, or the seller marks it delivered by phone.
+**Orders that cannot show a code.** Orders placed before the frontend saved the
+key (placed through an older version of the site) have no key in any browser, so
+their code can never be shown; the same applies to a customer who lost their key.
+Resetting the code does not help: the new code is hidden in the same way. There
+is deliberately no way for a seller to issue a new key or to deliver without a
+code (a seller could use either to skip the check). The only way to close such an
+order inside ChopList is **cancel**, which puts its portions back on sale and
+records the order as cancelled even if the food was delivered. If it was
+delivered, the seller keeps their own note outside ChopList. Do not ask the
+customer to reorder what they already received.
 `npm run audit:delivery` (in `backend/`) lists out-for-delivery orders with no
 code or no key, by reference only. It is read-only.
 
