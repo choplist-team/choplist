@@ -3,6 +3,8 @@ import { authenticate, currentSellerId, requireSeller } from '../auth/middleware
 import type { AuthProvider } from '../auth/provider.js';
 import { AppError } from '../errors.js';
 import { OrderModel, REF_PATTERN, type OrderDoc } from '../models/order.js';
+import { confirmDelivery, markOutForDelivery, resetDeliveryCode } from './delivery.js';
+import { confirmDeliverySchema } from './schema.js';
 import { toSellerOrder } from './seller-view.js';
 import { returnStock } from './stock.js';
 
@@ -44,14 +46,34 @@ export function createOrderRouter(auth: AuthProvider): Router {
     }
 
     const order = await loadOrNotFound(filter);
-    if (order.status === 'paid') {
+    // Already paid, or further along (so it must have been paid): nothing to do.
+    if (order.status !== 'cancelled') {
       res.json(toSellerOrder(order));
       return;
     }
     throw new AppError(409, 'ORDER_CANCELLED', 'This order was cancelled and cannot be marked paid');
   });
 
-  // pending or paid -> cancelled, and the portions go back on sale.
+  // paid -> out_for_delivery. Makes the code the customer will read out.
+  router.patch('/:ref/out-for-delivery', async (req, res) => {
+    res.json(toSellerOrder(await markOutForDelivery(orderFilter(req))));
+  });
+
+  // out_for_delivery -> delivered, with the code from the customer.
+  router.patch('/:ref/confirm-delivery', async (req, res) => {
+    const filter = orderFilter(req);
+    const { code } = confirmDeliverySchema.parse(req.body);
+    res.json(toSellerOrder(await confirmDelivery(filter, code)));
+  });
+
+  // A new code for an order that is out for delivery (a lost code or a lockout).
+  router.patch('/:ref/reset-delivery-code', async (req, res) => {
+    res.json(toSellerOrder(await resetDeliveryCode(orderFilter(req))));
+  });
+
+  // pending, paid or out_for_delivery -> cancelled, and the portions go back on
+  // sale. A delivered order cannot be cancelled: the food was eaten, so the
+  // stock is NOT returned. Cancelling in transit also removes the code.
   //
   // The stock must come back exactly once, even if the seller taps twice or
   // two requests race. The status change is one conditional write that only
@@ -61,14 +83,19 @@ export function createOrderRouter(auth: AuthProvider): Router {
   router.patch('/:ref/cancel', async (req, res) => {
     const filter = orderFilter(req);
     const cancelled = await OrderModel.findOneAndUpdate(
-      { ...filter, status: { $in: ['pending', 'paid'] } },
-      { $set: { status: 'cancelled', cancelledAt: new Date() } },
+      { ...filter, status: { $in: ['pending', 'paid', 'out_for_delivery'] } },
+      { $set: { status: 'cancelled', cancelledAt: new Date() }, $unset: { deliveryCode: '' } },
       { returnDocument: 'after' },
     );
 
     if (!cancelled) {
-      // Not found, or already cancelled (idempotent: same answer, no stock change).
-      res.json(toSellerOrder(await loadOrNotFound(filter)));
+      // Not found, delivered, or already cancelled.
+      const order = await loadOrNotFound(filter);
+      if (order.status === 'delivered') {
+        throw new AppError(409, 'ORDER_DELIVERED', 'A delivered order cannot be cancelled');
+      }
+      // Already cancelled: idempotent, same answer, no stock change.
+      res.json(toSellerOrder(order));
       return;
     }
 
