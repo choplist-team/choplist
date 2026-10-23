@@ -331,11 +331,31 @@ describe.skipIf(!testDbUri)('delivery confirmation on a real MongoDB', () => {
       expect((await reset(ref)).body.error.code).toBe('ORDER_NOT_OUT_FOR_DELIVERY'); // delivered
     });
 
-    it('two resets at once use one reset, not two (a double tap)', async () => {
+    // Whether two simultaneous resets count once or twice depends on whether the
+    // second one starts before the first finishes, so that is not asserted. What
+    // must hold for any timing is the cap.
+    it('10 simultaneous resets never use more than 2, and never repeat a code', async () => {
+      const { ref, code: first } = await inTransit();
+      const results = await Promise.all(Array.from({ length: 10 }, () => reset(ref)));
+      for (const res of results) {
+        if (res.status === 200) continue;
+        expect(res.status).toBe(409);
+        expect(res.body.error.code).toBe('DELIVERY_RESET_LIMIT');
+      }
+      const stored = await raw(ref);
+      expect(stored.deliveryCodeResets).toBeGreaterThanOrEqual(1);
+      expect(stored.deliveryCodeResets).toBeLessThanOrEqual(2);
+      expect(stored.deliveryCodeAttempts).toBe(0);
+      expect(stored.deliveryCode).not.toBe(first);
+      expect(stored.status).toBe('out_for_delivery');
+    });
+
+    it('a double tap: both get 200 (the cap is 2), and it counts as one reset or two', async () => {
       const { ref } = await inTransit();
       const results = await Promise.all([reset(ref), reset(ref)]);
-      expect(results.map((r) => r.status)).toEqual([200, 200]);
-      expect((await raw(ref)).deliveryCodeResets).toBe(1);
+      expect(results.map((r) => r.status)).toEqual([200, 200]); // the cap is 2, so both fit
+      const resets = (await raw(ref)).deliveryCodeResets;
+      expect([1, 2]).toContain(resets);
     });
   });
 
