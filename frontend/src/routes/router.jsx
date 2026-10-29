@@ -21,6 +21,8 @@ import NotFound from "./NotFound.jsx";
 import EditProfile from "@/pages/seller/EditProfile.jsx";
 import Prep from "@/pages/seller/Prep.jsx";
 import Delivery from "@/pages/seller/Delivery.jsx";
+import AdminLayout from "@/pages/admin/AdminLayout.jsx";
+import AdminOverview from "../pages/admin/AdminOverview.jsx";
 
 export const router = createBrowserRouter([
   {
@@ -60,7 +62,6 @@ export const router = createBrowserRouter([
           {
             element: <RequireSellerProfile />,
             children: [
-            
               {
                 path: "seller/menu/new",
                 element: <CreateMenu />,
@@ -101,6 +102,17 @@ export const router = createBrowserRouter([
       {
         path: "order-lookup",
         element: <OrderLookup />,
+      },
+
+      {
+        path: "admin",
+        element: <AdminLayout />,
+        children: [
+          {
+            index: true,
+            element: <AdminOverview />,
+          },
+        ],
       },
 
       {
