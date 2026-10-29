@@ -11,6 +11,7 @@ import {
   menuAnalyticsQuery,
 } from './analytics.js';
 import { listOrders, orderDetail, orderDetailQuery, orderListQuery } from './orders.js';
+import { eventListQuery, health, listEvents, listReports, parseReportId, reportListQuery, resolveBody, resolveReport } from './support.js';
 import { overview } from './overview.js';
 import {
   CHANGES,
@@ -80,6 +81,24 @@ export function createAdminRouter(auth: AuthProvider, adminIds: readonly string[
 
   router.get('/analytics/customers', async (req, res) => {
     res.json(await customerAnalytics(customerAnalyticsQuery.parse(req.query)));
+  });
+
+  // ---- System health and support ----
+  router.get('/health', async (_req, res) => {
+    res.json(await health());
+  });
+
+  router.get('/events', async (req, res) => {
+    res.json(await listEvents(eventListQuery.parse(req.query)));
+  });
+
+  router.get('/reports', async (req, res) => {
+    res.json(await listReports(reportListQuery.parse(req.query)));
+  });
+
+  router.patch('/reports/:id/resolve', async (req, res) => {
+    const { note } = resolveBody.parse(req.body ?? {});
+    res.json(await resolveReport({ id: parseReportId(req.params.id), adminId: currentAdminId(req), note }));
   });
 
   return router;

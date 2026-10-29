@@ -11,7 +11,13 @@ export type RateLimitSettings = {
   // Menu views counted per IP per window. Optional so existing settings keep
   // working; DEFAULT_VIEWS_PER_WINDOW applies when left out.
   viewsPerWindow?: number;
+  // "My order is missing" reports per IP per window. Optional; see below.
+  reportsPerWindow?: number;
 };
+
+// Strict on purpose: this form is open to anyone and each report lands in front
+// of an admin. A real customer sends one or two.
+export const DEFAULT_REPORTS_PER_WINDOW = 5;
 
 // A person opening a few shop links in a row is normal, and many customers can
 // share one mobile-network address, so this is generous. Its job is only to
@@ -45,6 +51,7 @@ export function createRateLimiters(settings: RateLimitSettings) {
   return {
     orders: limiter(settings.ordersPerWindow, settings.windowMs, 'Too many orders from this network. Please wait a few minutes.'),
     lookups: limiter(settings.lookupsPerWindow, settings.windowMs, 'Too many lookups. Please wait a few minutes.'),
+    reports: limiter(settings.reportsPerWindow ?? DEFAULT_REPORTS_PER_WINDOW, settings.windowMs, 'Too many reports from this network. Please wait a few minutes.'),
     views: limiter(settings.viewsPerWindow ?? DEFAULT_VIEWS_PER_WINDOW, settings.windowMs, 'Too many requests. Please wait a few minutes.'),
   };
 }

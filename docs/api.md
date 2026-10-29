@@ -55,6 +55,7 @@ Every error, on every route, has this shape:
 | 404 | `MENU_NOT_FOUND` | No such menu for this seller (also for another seller's menu, and malformed ids) |
 | 404 | `SELLER_NOT_FOUND` | No seller has this public link |
 | 404 | `ORDER_NOT_FOUND` | No order matches that reference and phone digits (same error for both) |
+| 404 | `REPORT_NOT_FOUND` | No "my order is missing" report has that id (admin) |
 | 409 | `SLUG_TAKEN` | The chosen link is used by another seller |
 | 409 | `MENU_NOT_DRAFT` | Editing a menu that is open or closed |
 | 409 | `MENU_CLOSED` | Opening a closed menu (create a new one instead) |
@@ -402,7 +403,7 @@ Orders across all sellers, newest first. Filters (all optional, combine freely):
 
 `flag=failed` means **placed but never paid, and the menu's cut-off has passed**.
 An order that could not be placed at all (sold out, closed...) never becomes an
-order; those are in the event log (`GET /api/admin/events`).
+order; those are in the event log (`GET /api/admin/events`) and counted by `GET /api/admin/health`.
 
 ```
 GET /api/admin/orders?sellerId=6710a1c2e4b0a1b2c3d4e5f6&flag=failed&from=2026-10-01
@@ -595,6 +596,148 @@ customer).
 - No phone numbers or names are returned, only counts.
 
 Errors: `400 VALIDATION_ERROR` (bad date, `from` after `to`).
+
+### GET /api/admin/health
+
+Counts for the last 24 hours, for the "is anything wrong?" panel.
+
+```
+GET /api/admin/health
+Authorization: Bearer <admin token>
+```
+
+Response `200`:
+
+```json
+{
+  "generatedAt": "2026-10-29T15:30:00.000Z",
+  "window": { "hours": 24, "since": "2026-10-28T15:30:00.000Z" },
+  "database": "connected",
+  "failedSubmissions": { "total": 3, "byCode": { "SOLD_OUT": 2, "ORDERING_CLOSED": 1 } },
+  "serverErrors": 2,
+  "notificationFailures": 0,
+  "openReports": 2,
+  "reportsLast24h": 2,
+  "definitions": { "failedSubmissions": "...", "serverErrors": "...", "notificationFailures": "...", "openReports": "..." }
+}
+```
+
+- `failedSubmissions` are orders customers tried to place but that were refused
+  (sold out, ordering closed, wrong area or day, invalid form). They never became
+  orders, so they are not in the orders list. `byCode` breaks them down by error code.
+- `serverErrors` are unexpected `500` responses (menu or checkout errors included).
+- **`notificationFailures` is always `0` for now.** Nothing sends notifications yet.
+  `0` means "nothing is reporting", not "nothing is failing". It starts counting when
+  the notification feature calls the logger.
+- `openReports` is every unresolved "my order is missing" report, all time; the other
+  counts cover the last 24 hours.
+
+### GET /api/admin/events
+
+The troubleshooting log, newest first. Optional `?type=` (`order_failed`,
+`server_error`, `notification_failed`, `missing_order_report`), `?level=`
+(`info`, `warn`, `error`), `?sellerId=`, `?from=` and `?to=` (calendar days in Lagos
+time, both included), `?page=`, `?limit=` (default 20, at most 100).
+
+```
+GET /api/admin/events?type=order_failed&from=2026-10-29
+Authorization: Bearer <admin token>
+```
+
+Response `200`:
+
+```json
+{
+  "events": [
+    {
+      "id": "6720c3e4e4b0a1b2c3d4e5fa",
+      "type": "order_failed",
+      "level": "warn",
+      "code": "SOLD_OUT",
+      "message": "An order was refused: SOLD_OUT",
+      "sellerId": "6710a1c2e4b0a1b2c3d4e5f6",
+      "menuId": "6710b2d3e4b0a1b2c3d4e5f7",
+      "orderRef": null,
+      "meta": {},
+      "createdAt": "2026-10-29T14:02:11.000Z"
+    }
+  ],
+  "pagination": { "page": 1, "limit": 20, "total": 1, "totalPages": 1 }
+}
+```
+
+Events hold an error code, the menu and seller, and small facts (for example the
+route of a server error). They never hold a phone number, name, address, message text,
+delivery code or key. Events are deleted automatically after 60 days.
+
+Errors: `400 VALIDATION_ERROR` (unknown `type` or `level`, bad id or date, `limit` over 100).
+
+### GET /api/admin/reports
+
+Customers' "my order is missing" reports. Open ones first (newest first), then
+resolved ones. Optional `?status=open|resolved`, `?page=`, `?limit=`.
+
+```
+GET /api/admin/reports?status=open
+Authorization: Bearer <admin token>
+```
+
+Response `200`:
+
+```json
+{
+  "reports": [
+    {
+      "id": "6720d4f5e4b0a1b2c3d4e5fb",
+      "status": "open",
+      "createdAt": "2026-10-29T15:01:00.000Z",
+      "ref": "CL-7KQ2M",
+      "phoneLast4": "4567",
+      "menuSlug": "mama-ts-kitchen",
+      "message": "I transferred at 3pm and nothing has come.",
+      "seller": { "id": "6710a1c2e4b0a1b2c3d4e5f6", "businessName": "Mama T Kitchen", "slug": "mama-ts-kitchen" },
+      "orderFound": true,
+      "matchedOrderRef": "CL-7KQ2M",
+      "resolvedBy": null,
+      "resolvedAt": null,
+      "resolutionNote": null
+    }
+  ],
+  "pagination": { "page": 1, "limit": 20, "total": 1, "totalPages": 1 }
+}
+```
+
+`orderFound` and `matchedOrderRef` are what the system found when the report arrived
+(the customer is never told). `matchedOrderRef` is set only when exactly one order
+matched; look it up with `GET /api/admin/orders/:ref`. Only the last 4 digits of a
+phone number are ever stored.
+
+Errors: `400 VALIDATION_ERROR` (bad `status`, `page` or `limit`).
+
+### PATCH /api/admin/reports/:id/resolve
+
+Marks a report resolved. Optional body `{ "note": "..." }` (up to 300 characters)
+saying what was done.
+
+```
+PATCH /api/admin/reports/6720d4f5e4b0a1b2c3d4e5fb/resolve
+Authorization: Bearer <admin token>
+Content-Type: application/json
+```
+
+```json
+{ "note": "Seller confirmed it was delivered" }
+```
+
+Response `200`: the report, now `"status": "resolved"` with `resolvedBy`, `resolvedAt`
+and `resolutionNote` set.
+
+- Safe to repeat: resolving a resolved report returns it unchanged (the first
+  resolver and time are kept) and adds no audit entry.
+- The action is written to the audit trail **before** it is applied; if that fails,
+  the report stays open and the request fails with `500`.
+
+Errors: `400 VALIDATION_ERROR` (note too long), `404 REPORT_NOT_FOUND`.
 
 ## Menus (seller)
 
@@ -998,6 +1141,7 @@ Rate limits, per IP address (counted on every attempt, valid or not):
 | `POST /api/public/orders` | 20 per 10 minutes |
 | `GET /api/public/orders/:ref` | 30 per 10 minutes |
 | `POST /api/public/menu/:slug/view` | 120 per 10 minutes |
+| `POST /api/public/orders/report-missing` | 5 per 10 minutes |
 
 Over the limit: `429 RATE_LIMITED`, with a `RateLimit` header saying when to retry.
 
@@ -1137,6 +1281,52 @@ Errors: `400 VALIDATION_ERROR`, `400 ITEM_NOT_FOUND`, `400 INVALID_AREA`,
 `400 INVALID_DELIVERY_DAY`, `404 MENU_NOT_FOUND`, `409 ORDERING_CLOSED`,
 `409 SOLD_OUT` (nothing was taken; the message says what is left),
 `429 RATE_LIMITED`.
+
+### POST /api/public/orders/report-missing
+
+A customer says their order is missing (they paid and nothing arrived, or the order
+never showed up). No sign-in. Send **either** the order reference **or** the last 4
+digits of the phone number they ordered with (or both).
+
+```
+POST /api/public/orders/report-missing
+Content-Type: application/json
+```
+
+```json
+{
+  "ref": "CL-7KQ2M",
+  "phoneLast4": "4567",
+  "menuSlug": "mama-ts-kitchen",
+  "message": "I transferred at 3pm and nothing has come."
+}
+```
+
+- `ref` (optional if `phoneLast4` is given): any case.
+- `phoneLast4` (optional if `ref` is given): **exactly 4 digits**. A whole phone number
+  is rejected, so one can never be stored.
+- `menuSlug` (optional): the shop link they ordered from. It only narrows the search.
+  An unknown link is not an error.
+- `message`: 5 to 500 characters. Empty strings for the optional fields count as
+  "not given".
+
+Response `201`:
+
+```json
+{ "received": true }
+```
+
+**The answer is always the same**, whether or not an order was found. Telling the
+customer would let anyone test which references exist. The system records the result
+privately for the admin (`orderFound`, and the matching reference when exactly one
+order matches). With only the last 4 digits it searches orders from the last 7
+days (30 days with a shop link). Reports show up on the admin support page and in the
+health counts.
+
+Rate limited to 5 per 10 minutes per network.
+
+Errors: `400 VALIDATION_ERROR` (neither reference nor digits, digits not exactly 4,
+message too short or long), `429 RATE_LIMITED`.
 
 ### GET /api/public/orders/:ref?phoneLast4=1234
 
