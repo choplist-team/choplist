@@ -8,7 +8,15 @@ export type RateLimitSettings = {
   ordersPerWindow: number;
   // Order lookups per IP per window. Also slows anyone guessing phoneLast4.
   lookupsPerWindow: number;
+  // Menu views counted per IP per window. Optional so existing settings keep
+  // working; DEFAULT_VIEWS_PER_WINDOW applies when left out.
+  viewsPerWindow?: number;
 };
+
+// A person opening a few shop links in a row is normal, and many customers can
+// share one mobile-network address, so this is generous. Its job is only to
+// stop one source from inflating the counters by the thousand.
+export const DEFAULT_VIEWS_PER_WINDOW = 120;
 
 export const DEFAULT_RATE_LIMITS: RateLimitSettings = {
   windowMs: 10 * 60 * 1000,
@@ -37,5 +45,6 @@ export function createRateLimiters(settings: RateLimitSettings) {
   return {
     orders: limiter(settings.ordersPerWindow, settings.windowMs, 'Too many orders from this network. Please wait a few minutes.'),
     lookups: limiter(settings.lookupsPerWindow, settings.windowMs, 'Too many lookups. Please wait a few minutes.'),
+    views: limiter(settings.viewsPerWindow ?? DEFAULT_VIEWS_PER_WINDOW, settings.windowMs, 'Too many requests. Please wait a few minutes.'),
   };
 }

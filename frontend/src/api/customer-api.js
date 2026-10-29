@@ -1,8 +1,17 @@
+import { shouldCountView } from "@/lib/menu-views";
 import { getOrderKey, saveOrderKey } from "@/lib/order-keys";
 import { apiRequest } from "./api-client";
 
-export const getShop = (slug) => {
-  return apiRequest(`/public/menu/${encodeURIComponent(slug)}`);
+export const getShop = async (slug) => {
+  const shop = await apiRequest(`/public/menu/${encodeURIComponent(slug)}`);
+  // Tell the server the menu was opened (once per session per shop), without
+  // waiting for it and without ever letting it fail the page.
+  if (shop?.menu && shouldCountView(slug)) {
+    apiRequest(`/public/menu/${encodeURIComponent(slug)}/view`, { method: "POST" }).catch(
+      () => {}
+    );
+  }
+  return shop;
 };
 
 export const placeOrder = async (order) => {

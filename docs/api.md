@@ -482,6 +482,120 @@ included.
 
 Errors: `400 VALIDATION_ERROR` (bad `reveal`), `404 ORDER_NOT_FOUND`.
 
+### GET /api/admin/analytics/menus
+
+Menu views, orders and conversion, grouped by seller. Optional `?from=` and `?to=`
+(calendar days `YYYY-MM-DD` in Lagos time, both included), `?page=`, `?limit=`
+(sellers per page, default 20, at most 100). Without dates it covers all time.
+
+```
+GET /api/admin/analytics/menus?from=2026-10-01&to=2026-10-31
+Authorization: Bearer <admin token>
+```
+
+Response `200`:
+
+```json
+{
+  "range": { "from": "2026-10-01", "to": "2026-10-31" },
+  "totals": { "views": 75, "orders": 17, "conversion": 0.2267 },
+  "sellers": [
+    {
+      "seller": { "id": "6710a1c2e4b0a1b2c3d4e5f6", "businessName": "Mama T Kitchen", "slug": "mama-t" },
+      "views": 65,
+      "orders": 11,
+      "conversion": 0.1692,
+      "menus": [
+        { "id": "6710b2d3e4b0a1b2c3d4e5f7", "title": "This week", "status": "open", "views": 60, "orders": 10, "conversion": 0.1667 }
+      ]
+    }
+  ],
+  "pagination": { "page": 1, "limit": 20, "total": 1, "totalPages": 1 },
+  "definitions": { "views": "...", "orders": "...", "conversion": "..." }
+}
+```
+
+- Sellers are listed busiest first (most orders); a seller's menus likewise. Menus
+  with no views and no orders in the period are left out. `totals` cover every
+  seller, not only the page.
+- `orders` counts every order **placed** on the menu in the period, including ones
+  later cancelled.
+- `conversion` is `orders / views` as a fraction (0.1667 = 16.7%). **It is an
+  indicator, not an exact rate**: views are page loads, not unique visitors, and
+  can be inflated, so it can exceed 1. It is `null` when there were no views.
+
+Errors: `400 VALIDATION_ERROR` (bad date, `from` after `to`, bad `page`/`limit`).
+
+### GET /api/admin/analytics/items
+
+The most frequently ordered items, by portions. Optional `?from=`, `?to=`,
+`?sellerId=`, `?page=`, `?limit=`.
+
+```
+GET /api/admin/analytics/items?from=2026-10-01&limit=10
+Authorization: Bearer <admin token>
+```
+
+Response `200`:
+
+```json
+{
+  "range": { "from": "2026-10-01", "to": null },
+  "sellerId": null,
+  "items": [
+    { "name": "Jollof rice", "portions": 9, "orders": 3, "revenue": 29500, "sellers": 2 }
+  ],
+  "pagination": { "page": 1, "limit": 10, "total": 3, "totalPages": 1 },
+  "definitions": { "items": "..." }
+}
+```
+
+- Items are matched on the **lower-cased, trimmed name**, so `Jollof rice` and
+  `  jollof RICE ` are one item, including across different sellers' menus.
+  `sellers` says how many sellers sold it. The name shown is the first spelling met.
+- Cancelled orders are not counted (their portions went back on sale). Pending and
+  paid orders are.
+- `revenue` is the sum of price times portions as ordered, in naira. The seller
+  confirms payment, so this is value ordered, not money received.
+
+Errors: `400 VALIDATION_ERROR` (bad date, `sellerId`, `page`/`limit`).
+
+### GET /api/admin/analytics/customers
+
+New versus returning customers. Optional `?from=`, `?to=`.
+
+```
+GET /api/admin/analytics/customers?from=2026-10-12&to=2026-10-31
+Authorization: Bearer <admin token>
+```
+
+Response `200`:
+
+```json
+{
+  "range": { "from": "2026-10-12", "to": "2026-10-31" },
+  "customers": { "total": 3, "new": 1, "returning": 2, "returningRate": 0.6667 },
+  "orders": { "total": 3, "firstOrders": 1, "repeatOrders": 2, "repeatRate": 0.6667 },
+  "definitions": { "customers": "...", "newCustomer": "...", "returningCustomer": "...", "repeatOrder": "..." }
+}
+```
+
+**This is approximate.** A customer is identified only by their phone number, in
+its normalised form (`0803 123 4567` and `+234 803 123 4567` are the same
+customer).
+
+- One person with two phone numbers counts as two customers; two people sharing a
+  phone count as one.
+- A customer is **new** in the period if their very first order is in it, and
+  **returning** if they ordered in the period and also had an earlier order. Over
+  all time (no dates) nobody can be returning, so read `repeatOrders` instead: an
+  order from someone who had already ordered before.
+- Cancelled orders are ignored everywhere, so cancelling does not make someone
+  "returning".
+- No phone numbers or names are returned, only counts.
+
+Errors: `400 VALIDATION_ERROR` (bad date, `from` after `to`).
+
 ## Menus (seller)
 
 All routes need `Authorization: Bearer <token>` and a seller profile
@@ -883,6 +997,7 @@ Rate limits, per IP address (counted on every attempt, valid or not):
 | ----- | ----- |
 | `POST /api/public/orders` | 20 per 10 minutes |
 | `GET /api/public/orders/:ref` | 30 per 10 minutes |
+| `POST /api/public/menu/:slug/view` | 120 per 10 minutes |
 
 Over the limit: `429 RATE_LIMITED`, with a `RateLimit` header saying when to retry.
 
@@ -925,6 +1040,33 @@ Response `200`:
   not closed the menu yet. Hide the order button when it is `false`.
 
 Errors: `404 SELLER_NOT_FOUND`.
+
+### POST /api/public/menu/:slug/view
+
+Tells the server that a customer opened this shop's menu, so admins can see how
+many people look at a menu compared with how many order. Call it once per visit,
+**after** the menu loaded (the shop page does this once per browser session per
+shop, so a refresh does not count again). No body.
+
+```
+POST /api/public/menu/mama-ts-kitchen/view
+```
+
+Response `204 No Content`, with nothing in the body. The page should not wait for
+it or show anything if it fails.
+
+- Only an **open** menu is counted. A shop with no open menu still answers `204`
+  and counts nothing.
+- It is a `POST` on purpose: link previews, crawlers and browsers that prefetch
+  only `GET`, so they do not inflate the numbers.
+- A counter per menu per day is kept (Lagos days). Nothing about the visitor is
+  stored: no address, device or phone number.
+- These are **page loads, not unique visitors**. A returning visitor or a bot counts
+  again, so the numbers are an indicator.
+- A failed write is not reported to the page (still `204`), because a counter
+  must never break a customer's page.
+
+Errors: `404 SELLER_NOT_FOUND` (unknown or suspended shop), `429 RATE_LIMITED`.
 
 ### POST /api/public/orders
 
