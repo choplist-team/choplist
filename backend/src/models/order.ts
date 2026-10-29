@@ -90,6 +90,13 @@ const orderSchema = new Schema(
     deliveryCodeResets: { type: Number, default: 0, min: 0 },
     // SHA-256 of the key given to the customer when they ordered. Never the key.
     accessKeyHash: { type: String, select: false },
+
+    // Hash of phone + menu + items (orders/fingerprint.ts). Missing on orders
+    // placed before it existed; the backfill script fills it in.
+    fingerprint: { type: String, match: /^[0-9a-f]{64}$/ },
+    // Set once, right after the order is saved, when an earlier order with the
+    // same fingerprint exists within DUPLICATE_WINDOW_MS. Admin list only.
+    possibleDuplicate: { type: Boolean, default: false },
   },
   { timestamps: true },
 );
@@ -105,6 +112,18 @@ orderSchema.pre('validate', function () {
 // A seller's orders for one menu, newest first. Also the first filter of the
 // prep sheet and delivery list.
 orderSchema.index({ sellerId: 1, menuId: 1, createdAt: -1 });
+
+// Admin console (all sellers at once). Each index matches one query shape:
+//  - createdAt:            "newest orders", and counting orders in the last 7/30 days.
+//  - sellerId + createdAt: "orders of one seller, newest first" without a menu.
+//  - status + createdAt:   "all cancelled/paid orders", newest first.
+//  - fingerprint + createdAt: the duplicate check, which looks for the same
+//    fingerprint within a few minutes either side of an order.
+// (ref already has a unique index, so a search by reference is a direct lookup.)
+orderSchema.index({ createdAt: -1 });
+orderSchema.index({ sellerId: 1, createdAt: -1 });
+orderSchema.index({ status: 1, createdAt: -1 });
+orderSchema.index({ fingerprint: 1, createdAt: 1 });
 
 export type Order = InferSchemaType<typeof orderSchema>;
 export type OrderDoc = HydratedDocument<Order>;

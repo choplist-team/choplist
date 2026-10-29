@@ -1,7 +1,7 @@
 import type { Request, RequestHandler } from 'express';
 import type { Types } from 'mongoose';
 import { AppError } from '../errors.js';
-import { SellerModel } from '../models/seller.js';
+import { SellerModel, isSellerActive } from '../models/seller.js';
 import type { AuthProvider } from './provider.js';
 
 // Adds our two fields to Express's Request type.
@@ -43,13 +43,46 @@ export const requireSeller: RequestHandler = async (req, _res, next) => {
   if (!req.clerkUserId) {
     throw new AppError(401, 'UNAUTHENTICATED', 'Sign in to continue');
   }
-  const seller = await SellerModel.findOne({ clerkUserId: req.clerkUserId }, { _id: 1 }).lean();
+  const seller = await SellerModel.findOne(
+    { clerkUserId: req.clerkUserId },
+    { _id: 1, status: 1, lastActiveAt: 1 },
+  ).lean();
   if (!seller) {
     throw new AppError(403, 'PROFILE_REQUIRED', 'Create your seller profile first');
   }
+  // One place blocks suspended and deactivated sellers from every seller route.
+  assertSellerNotBlocked(seller);
+  await touchLastActive(seller);
   req.sellerId = seller._id;
   next();
 };
+
+export function assertSellerNotBlocked(seller: { status?: string | null }): void {
+  if (!isSellerActive(seller)) {
+    throw new AppError(
+      403,
+      'ACCOUNT_SUSPENDED',
+      'Your account is not active. Contact ChopList support to have it restored.',
+    );
+  }
+}
+
+// "Last active" is only a rough signal for the admin dashboard, so it is
+// written at most once per interval instead of on every request. The seller was
+// already read above, so the common case costs no extra database call. Two
+// requests racing past the check just write the same minute twice, which is
+// harmless. A failed write must never break the seller's actual request.
+export const LAST_ACTIVE_INTERVAL_MS = 10 * 60 * 1000;
+
+async function touchLastActive(seller: { _id: Types.ObjectId; lastActiveAt?: Date | null }): Promise<void> {
+  const now = Date.now();
+  if (seller.lastActiveAt && now - seller.lastActiveAt.getTime() < LAST_ACTIVE_INTERVAL_MS) return;
+  try {
+    await SellerModel.updateOne({ _id: seller._id }, { $set: { lastActiveAt: new Date(now) } });
+  } catch (err) {
+    console.error('Could not record lastActiveAt', err instanceof Error ? err.name : err);
+  }
+}
 
 // Accessors for route handlers. They throw (a 500) if a route forgot its
 // middleware, instead of silently querying with undefined.

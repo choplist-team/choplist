@@ -1,5 +1,7 @@
 import mongoose from 'mongoose';
 import { MenuModel } from '../../src/models/menu.js';
+import { AdminAuditModel } from '../../src/models/admin-audit.js';
+import { EventLogModel } from '../../src/models/event-log.js';
 import { OrderModel } from '../../src/models/order.js';
 import { SellerModel } from '../../src/models/seller.js';
 
@@ -20,7 +22,9 @@ export async function connectTestDb(name: string): Promise<void> {
     throw new Error(`Refusing to drop "${mongoose.connection.name}": not a *_test database`);
   }
   await mongoose.connection.dropDatabase();
-  await Promise.all([SellerModel.createIndexes(), MenuModel.createIndexes(), OrderModel.createIndexes()]);
+  await Promise.all(
+    [SellerModel, MenuModel, OrderModel, EventLogModel, AdminAuditModel].map((model) => model.createIndexes()),
+  );
 }
 
 export async function disconnectTestDb(): Promise<void> {

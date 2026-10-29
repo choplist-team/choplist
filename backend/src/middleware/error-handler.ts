@@ -1,6 +1,7 @@
 import type { ErrorRequestHandler, RequestHandler, Response } from 'express';
 import { ZodError } from 'zod';
 import { AppError, type ErrorCode } from '../errors.js';
+import { logEvent } from '../events/log.js';
 
 type ErrorBody = { error: { code: ErrorCode; message: string } };
 
@@ -66,4 +67,21 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
   // them to the client (they can contain stack traces or connection strings).
   console.error(`Unhandled error on ${req.method} ${req.path}:`, err);
   send(res, 500, 'INTERNAL_ERROR', 'Something went wrong');
+
+  // Also keep a short record the admin health page can count. Sent AFTER the
+  // response, so logging can never delay or break it. Only the method, the
+  // route pattern and the error's class name are kept: not the query string
+  // (it can hold phone digits), not the error message (it can hold connection
+  // strings), not the request body.
+  void logEvent({
+    type: 'server_error',
+    level: 'error',
+    code: 'INTERNAL_ERROR',
+    message: 'An unhandled error ended a request with a 500',
+    meta: {
+      method: req.method,
+      route: typeof req.route?.path === 'string' ? `${req.baseUrl}${req.route.path}` : req.baseUrl || 'unknown',
+      errorType: err instanceof Error ? err.name : typeof err,
+    },
+  });
 };

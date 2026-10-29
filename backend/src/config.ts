@@ -41,6 +41,26 @@ const EnvSchema = z.object({
         .min(1, 'ALLOWED_ORIGINS must list at least one origin'),
     ),
 
+  // Clerk user ids allowed to use /api/admin, comma separated. Empty or unset
+  // means nobody is an admin (the admin routes then answer 403 to everyone).
+  // Find an id in the Clerk dashboard > Users > the user's page.
+  ADMIN_CLERK_USER_IDS: z
+    .string()
+    .optional()
+    .transform((raw) =>
+      (raw ?? '')
+        .split(',')
+        .map((id) => id.trim())
+        .filter((id) => id.length > 0),
+    )
+    .pipe(
+      z.array(
+        z.string().regex(/^user_[A-Za-z0-9]+$/, {
+          error: (issue) => `"${String(issue.input)}" is not a Clerk user id (they look like user_2abc...)`,
+        }),
+      ),
+    ),
+
   // From the Clerk dashboard (API keys). The publishable key is the same value
   // the frontend uses as VITE_CLERK_PUBLISHABLE_KEY.
   CLERK_SECRET_KEY: z

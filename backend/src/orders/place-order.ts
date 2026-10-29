@@ -2,7 +2,9 @@ import { Types, mongo } from 'mongoose';
 import { AppError } from '../errors.js';
 import { MenuModel, type MenuDoc } from '../models/menu.js';
 import { OrderModel, type OrderDoc } from '../models/order.js';
+import { SellerModel, isSellerActive } from '../models/seller.js';
 import { hashAccessKey } from './delivery-code.js';
+import { DUPLICATE_WINDOW_MS, orderFingerprint } from './fingerprint.js';
 import { generateRef as defaultGenerateRef } from './reference.js';
 import { returnStock, takeStock, type StockLine } from './stock.js';
 
@@ -73,6 +75,35 @@ function isRefCollision(err: unknown): boolean {
   return err instanceof mongo.MongoServerError && err.code === 11000 && Boolean(err.keyPattern?.ref);
 }
 
+// Marks the order when the same customer already placed exactly the same order
+// on this menu within DUPLICATE_WINDOW_MS (either side) and did not cancel it.
+//
+// It runs AFTER the insert and looks at other orders on BOTH sides of this one's
+// time. createdAt is stamped before the insert, so a later-stamped order can be
+// saved first; looking only backwards could then miss the pair on both sides.
+// Looking both ways, whichever of two identical orders is saved second always
+// sees the other and flags itself. If two are saved at the very same moment both
+// may flag: this errs towards flagging, which is why the field is "possible".
+//
+// A failure here must not fail the order: it is already saved and its stock taken.
+async function flagIfDuplicate(order: OrderDoc): Promise<void> {
+  if (!order.fingerprint) return;
+  try {
+    const other = await OrderModel.exists({
+      fingerprint: order.fingerprint,
+      _id: { $ne: order._id },
+      status: { $ne: 'cancelled' },
+      createdAt: {
+        $gte: new Date(order.createdAt.getTime() - DUPLICATE_WINDOW_MS),
+        $lte: new Date(order.createdAt.getTime() + DUPLICATE_WINDOW_MS),
+      },
+    });
+    if (other) await OrderModel.updateOne({ _id: order._id }, { $set: { possibleDuplicate: true } });
+  } catch (err) {
+    console.error('Could not check a new order for duplicates', err instanceof Error ? err.name : err);
+  }
+}
+
 export async function placeOrder(input: PlaceOrderInput, options: PlaceOrderOptions = {}): Promise<OrderDoc> {
   const generateRef = options.generateRef ?? defaultGenerateRef;
 
@@ -88,6 +119,16 @@ export async function placeOrder(input: PlaceOrderInput, options: PlaceOrderOpti
   const menu: MenuDoc | null = await MenuModel.findById(menuId);
   if (!menu) throw menuNotFound();
   if (menu.status !== 'open' || menu.cutoffAt <= new Date()) throw orderingClosed();
+
+  // A suspended or deactivated seller takes no new orders. The customer gets the
+  // ordinary "closed" answer, so the page does not announce why. There is a
+  // window of a few milliseconds between this check and the stock being taken in
+  // which a suspension can land; an order that slips through is still a real
+  // order and the admin can see it.
+  const owner = await SellerModel.findById(menu.sellerId, { status: 1 }).lean();
+  // (A menu whose seller does not exist is broken data; the route fails loudly
+  // on it later, as before. Only a seller that exists and is blocked closes it.)
+  if (owner && !isSellerActive(owner)) throw orderingClosed();
 
   const orderLines = lines.map(({ itemId, qty }) => {
     const item = menu.items.find((it) => it._id.equals(itemId));
@@ -114,11 +155,13 @@ export async function placeOrder(input: PlaceOrderInput, options: PlaceOrderOpti
   // 4. Save the order. Only the insert is retried on a reference collision;
   //    the stock is taken exactly once.
   const total = orderLines.reduce((sum, line) => sum + line.unitPrice * line.qty, 0);
+  const fingerprint = orderFingerprint({ phone: input.customer.phone, menuId: menuId.toString(), lines });
   try {
     for (let attempt = 1; ; attempt++) {
       try {
-        return await OrderModel.create({
+        const created = await OrderModel.create({
           ref: generateRef(),
+          fingerprint,
           sellerId: menu.sellerId,
           menuId,
           customer: input.customer,
@@ -128,6 +171,8 @@ export async function placeOrder(input: PlaceOrderInput, options: PlaceOrderOpti
           total,
           ...(options.accessKey ? { accessKeyHash: hashAccessKey(options.accessKey) } : {}),
         });
+        await flagIfDuplicate(created);
+        return created;
       } catch (err) {
         if (!isRefCollision(err) || attempt >= MAX_REF_ATTEMPTS) throw err;
       }
