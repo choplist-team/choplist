@@ -5,6 +5,7 @@ import { AppError } from '../errors.js';
 import { MenuModel, type MenuDoc } from '../models/menu.js';
 import { OrderModel, type OrderDoc } from '../models/order.js';
 import { SellerModel, isSellerActive, type SellerDoc } from '../models/seller.js';
+import { recordMenuView } from '../analytics/record-view.js';
 import { logEvent } from '../events/log.js';
 import { accessKeyMatches, generateAccessKey } from '../orders/delivery-code.js';
 import { placeOrder } from '../orders/place-order.js';
@@ -132,6 +133,30 @@ export function createPublicRouter(rateLimits: RateLimitSettings): Router {
 
     const menu = await MenuModel.findOne({ sellerId: seller._id, status: 'open' });
     res.json({ seller: toPublicSeller(seller), menu: menu ? toPublicMenu(menu, new Date()) : null });
+  });
+
+  // "Someone opened this shop's menu." The page calls it once per visit; the
+  // admin analytics add the counts up. A POST (not counted on the GET) so that
+  // link previews, crawlers and prefetching, which only GET, do not inflate it.
+  //
+  // Always 204, with no body, when the shop exists. A counter must never break or
+  // slow a customer's page, so a failed write is logged and still answers 204.
+  // Nothing about the visitor is stored. Counts only an OPEN menu; a shop with no
+  // open menu, or a suspended one, counts nothing.
+  router.post('/menu/:slug/view', limit.views, async (req, res) => {
+    const slug = String(req.params.slug ?? '').toLowerCase();
+    const seller = await SellerModel.findOne({ slug });
+    if (!seller || !isSellerActive(seller)) throw new AppError(404, 'SELLER_NOT_FOUND', 'No seller has this link');
+
+    const menu = await MenuModel.findOne({ sellerId: seller._id, status: 'open' }, { _id: 1, sellerId: 1 }).lean();
+    if (menu) {
+      try {
+        await recordMenuView(menu);
+      } catch (err) {
+        console.error('Could not count a menu view', err instanceof Error ? err.name : err);
+      }
+    }
+    res.status(204).end();
   });
 
   router.post('/orders', limit.orders, async (req, res) => {

@@ -124,6 +124,8 @@ orderSchema.index({ createdAt: -1 });
 orderSchema.index({ sellerId: 1, createdAt: -1 });
 orderSchema.index({ status: 1, createdAt: -1 });
 orderSchema.index({ fingerprint: 1, createdAt: 1 });
+// Orders per menu in a date range (menu analytics joins each menu to its orders).
+orderSchema.index({ menuId: 1, createdAt: 1 });
 
 export type Order = InferSchemaType<typeof orderSchema>;
 export type OrderDoc = HydratedDocument<Order>;

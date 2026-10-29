@@ -2,6 +2,14 @@ import { Router } from 'express';
 import { currentAdminId, requireAdmin } from '../auth/admin.js';
 import { authenticate } from '../auth/middleware.js';
 import type { AuthProvider } from '../auth/provider.js';
+import {
+  customerAnalytics,
+  customerAnalyticsQuery,
+  itemAnalytics,
+  itemAnalyticsQuery,
+  menuAnalytics,
+  menuAnalyticsQuery,
+} from './analytics.js';
 import { listOrders, orderDetail, orderDetailQuery, orderListQuery } from './orders.js';
 import { overview } from './overview.js';
 import {
@@ -59,6 +67,19 @@ export function createAdminRouter(auth: AuthProvider, adminIds: readonly string[
   router.get('/orders/:ref', async (req, res) => {
     const { reveal } = orderDetailQuery.parse(req.query);
     res.json(await orderDetail({ ref: String(req.params.ref ?? ''), reveal, adminId: currentAdminId(req) }));
+  });
+
+  // ---- Analytics ----
+  router.get('/analytics/menus', async (req, res) => {
+    res.json(await menuAnalytics(menuAnalyticsQuery.parse(req.query)));
+  });
+
+  router.get('/analytics/items', async (req, res) => {
+    res.json(await itemAnalytics(itemAnalyticsQuery.parse(req.query)));
+  });
+
+  router.get('/analytics/customers', async (req, res) => {
+    res.json(await customerAnalytics(customerAnalyticsQuery.parse(req.query)));
   });
 
   return router;
