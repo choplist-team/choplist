@@ -253,6 +253,235 @@ this was enforced are fixed by `npm run backfill:admin`.
 code, the menu and the seller, and never the customer's phone, name, address or any
 delivery code. Events are deleted automatically after 60 days.
 
+### GET /api/admin/overview
+
+Platform numbers for the dashboard. Each definition is returned as text so the
+page can show it next to the figure.
+
+```
+GET /api/admin/overview
+Authorization: Bearer <admin token>
+```
+
+Response `200`:
+
+```json
+{
+  "generatedAt": "2026-10-29T14:40:00.000Z",
+  "totalSellers": 5,
+  "activeSellers": 2,
+  "publishedMenus": 3,
+  "openMenus": 1,
+  "totalOrders": 8,
+  "ordersLast7Days": 4,
+  "ordersLast30Days": 7,
+  "successRate": 0.6667,
+  "fulfilmentRate": 0.3333,
+  "ordersCounted": 6,
+  "definitions": {
+    "activeSellers": "Sellers whose account status is active (not suspended or deactivated) AND who used the seller app or received an order in the last 30 days.",
+    "successRate": "Of the orders whose menu cut-off has already passed, the share that reached paid, out for delivery or delivered. Payment is confirmed by the seller; ChopList never handles money.",
+    "...": "one entry per figure"
+  }
+}
+```
+
+- `successRate` and `fulfilmentRate` are fractions from 0 to 1 (show 0.6667 as 66.7%).
+  `ordersCounted` is how many orders they are out of: orders whose menu cut-off has
+  passed. Orders on a menu that is still taking orders are not counted either way.
+- The rates are `null` when `ordersCounted` is 0 ("no data yet", not "0%").
+- `activeSellers` excludes suspended and deactivated sellers even if they were
+  recently active. "Published" means a menu that has been opened at least once.
+- Success rate counts what the **seller confirmed**. An order paid by bank
+  transfer but never marked paid by the seller counts as not succeeded.
+
+### GET /api/admin/sellers
+
+Sellers, newest registered first. Optional `?q=` (searches business name, link,
+email and phone, which can be typed as `0803 123`, `+234 803 123` or `803123`;
+the text is matched literally), `?status=active|suspended|deactivated`, `?page=`,
+`?limit=` (default 20, at most 100).
+
+```
+GET /api/admin/sellers?q=mama&status=active&page=1&limit=20
+Authorization: Bearer <admin token>
+```
+
+Response `200`:
+
+```json
+{
+  "sellers": [
+    {
+      "id": "6710a1c2e4b0a1b2c3d4e5f6",
+      "businessName": "Mama T Kitchen",
+      "slug": "mama-t",
+      "publicMenuPath": "/api/public/menu/mama-t",
+      "phone": "+2348031234567",
+      "email": "mama@example.com",
+      "status": "active",
+      "statusReason": null,
+      "statusChangedAt": null,
+      "lastActiveAt": "2026-10-29T14:30:00.000Z",
+      "registeredAt": "2026-08-30T10:00:00.000Z",
+      "openMenu": { "id": "6710b2d3e4b0a1b2c3d4e5f7", "title": "This week", "cutoffAt": "2026-10-31T17:00:00.000Z" },
+      "totalOrders": 7
+    }
+  ],
+  "pagination": { "page": 1, "limit": 20, "total": 1, "totalPages": 1 }
+}
+```
+
+`openMenu` is `null` when the seller has no menu open. Bank details are never
+returned to admins. `lastActiveAt` is when the seller last used the seller app (at
+most one update per 10 minutes); a seller who only receives orders may show an old
+date. Errors: `400 VALIDATION_ERROR` (bad `status`, `page` or `limit`).
+
+### GET /api/admin/sellers/:id
+
+One seller: the same fields plus their menus (newest 50) and order counts.
+
+Response `200` (abridged):
+
+```json
+{
+  "id": "6710a1c2e4b0a1b2c3d4e5f6",
+  "businessName": "Mama T Kitchen",
+  "status": "active",
+  "lastActiveAt": "2026-10-29T14:30:00.000Z",
+  "orders": { "total": 7, "pending": 2, "paid": 2, "out_for_delivery": 1, "delivered": 1, "cancelled": 1, "lastOrderAt": "2026-10-29T13:40:00.000Z" },
+  "menus": [
+    { "id": "6710b2d3e4b0a1b2c3d4e5f7", "title": "This week", "status": "open", "itemCount": 6, "cutoffAt": "2026-10-31T17:00:00.000Z", "openedAt": "2026-10-28T08:00:00.000Z", "closedAt": null, "createdAt": "2026-10-27T20:00:00.000Z" }
+  ]
+}
+```
+
+Errors: `404 SELLER_NOT_FOUND` (unknown or malformed id).
+
+### PATCH /api/admin/sellers/:id/suspend, /deactivate, /reinstate
+
+Changes the account status. **Nothing is deleted**: menus, orders and the profile
+stay, and reinstating restores everything. What a blocked seller experiences is in
+"Suspended and deactivated sellers" above. Suspend and deactivate need a reason
+(3 to 300 characters); reinstate takes an optional one.
+
+```
+PATCH /api/admin/sellers/6710a1c2e4b0a1b2c3d4e5f6/suspend
+Authorization: Bearer <admin token>
+Content-Type: application/json
+```
+
+```json
+{ "reason": "Repeated fake orders" }
+```
+
+Response `200`: the seller object, e.g. `"status": "suspended"`,
+`"statusReason": "Repeated fake orders"`, `statusChangedAt` set. Reinstating
+returns `"status": "active"` and clears the reason (or stores the new one).
+
+- Safe to repeat: asking for the status the seller already has returns the seller
+  unchanged and adds no audit entry.
+- Every change is recorded in the audit trail (admin, action, seller, reason)
+  **before** it is applied. If the record cannot be saved the seller is left
+  unchanged and the request fails with `500`.
+
+Errors: `400 VALIDATION_ERROR` (missing or too short reason), `404 SELLER_NOT_FOUND`.
+
+### GET /api/admin/orders
+
+Orders across all sellers, newest first. Filters (all optional, combine freely):
+
+| Query | Meaning |
+|---|---|
+| `ref` | Exact reference or its first characters (`CL-7K`), any case |
+| `sellerId` | One seller's id |
+| `from`, `to` | Calendar days `YYYY-MM-DD` in Lagos time, both included |
+| `status` | One or more of `pending,paid,out_for_delivery,delivered,cancelled` (comma list or repeated). Not `all` |
+| `flag` | `duplicate` (possible duplicate), `cancelled`, or `failed` |
+| `page`, `limit` | Default 20, at most 100 |
+
+`flag=failed` means **placed but never paid, and the menu's cut-off has passed**.
+An order that could not be placed at all (sold out, closed...) never becomes an
+order; those are in the event log (`GET /api/admin/events`).
+
+```
+GET /api/admin/orders?sellerId=6710a1c2e4b0a1b2c3d4e5f6&flag=failed&from=2026-10-01
+Authorization: Bearer <admin token>
+```
+
+Response `200`:
+
+```json
+{
+  "orders": [
+    {
+      "ref": "CL-7KQ2M",
+      "status": "paid",
+      "total": 7000,
+      "portions": 2,
+      "paymentStatus": "paid",
+      "paymentConfirmedBy": "seller",
+      "createdAt": "2026-10-28T19:00:00.000Z",
+      "paidAt": "2026-10-28T20:10:00.000Z",
+      "seller": { "id": "6710a1c2e4b0a1b2c3d4e5f6", "businessName": "Mama T Kitchen", "slug": "mama-t" },
+      "menu": { "id": "6710b2d3e4b0a1b2c3d4e5f7", "title": "This week", "cutoffAt": "2026-10-31T17:00:00.000Z" },
+      "customer": { "name": "Ada Obi", "phone": "0803****567" },
+      "delivery": { "area": "Yaba", "day": "2026-10-31" },
+      "flags": { "possibleDuplicate": false, "cancelled": false, "failed": false }
+    }
+  ],
+  "pagination": { "page": 1, "limit": 20, "total": 1, "totalPages": 1 }
+}
+```
+
+- `paymentStatus` is `unpaid`, `paid` or `paid_then_cancelled` (a refund may be
+  owed). It is **confirmed by the seller** (`paymentConfirmedBy`); ChopList does not
+  see the bank transfer.
+- Phone numbers are masked. The delivery address, notes, delivery codes and access
+  keys are never in a list.
+
+Errors: `400 VALIDATION_ERROR` (bad filter, `from` after `to`, `limit` over 100).
+
+### GET /api/admin/orders/:ref
+
+One order. By default the phone is masked and the address and note are left out.
+
+```
+GET /api/admin/orders/CL-7KQ2M?reveal=true
+Authorization: Bearer <admin token>
+```
+
+`reveal=true` adds the full phone number, the delivery address and the note.
+**Every reveal is written to the audit trail first**; if that fails nothing private
+is returned. `reveal` must be exactly `true` or `false`.
+
+Response `200` (abridged):
+
+```json
+{
+  "ref": "CL-7KQ2M",
+  "status": "out_for_delivery",
+  "total": 7000,
+  "paymentStatus": "paid",
+  "paymentConfirmedBy": "seller",
+  "lines": [{ "name": "Jollof rice", "unitPrice": 3500, "qty": 2 }],
+  "customer": { "name": "Ada Obi", "phone": "+2348031234567" },
+  "delivery": { "area": "Yaba", "day": "2026-10-31", "address": "12 Herbert Macaulay Way, Yaba" },
+  "note": "Extra pepper",
+  "revealed": true,
+  "timeline": { "createdAt": "2026-10-28T19:00:00.000Z", "paidAt": "2026-10-28T20:10:00.000Z", "outForDeliveryAt": "2026-10-31T09:00:00.000Z", "deliveredAt": null, "cancelledAt": null },
+  "flags": { "possibleDuplicate": false, "cancelled": false, "failed": false },
+  "similarOrders": [{ "ref": "CL-7KQ2N", "status": "pending", "createdAt": "2026-10-28T19:02:00.000Z" }]
+}
+```
+
+`similarOrders` lists (by reference only) other orders with the same customer,
+menu and items within 10 minutes. Without `reveal=true`, `customer.phone` is
+masked and `delivery.address` and `note` are absent. The delivery code is never
+included.
+
+Errors: `400 VALIDATION_ERROR` (bad `reveal`), `404 ORDER_NOT_FOUND`.
+
 ## Menus (seller)
 
 All routes need `Authorization: Bearer <token>` and a seller profile
