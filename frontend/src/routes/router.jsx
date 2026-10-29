@@ -23,6 +23,8 @@ import Prep from "@/pages/seller/Prep.jsx";
 import Delivery from "@/pages/seller/Delivery.jsx";
 import AdminLayout from "@/pages/admin/AdminLayout.jsx";
 import AdminOverview from "../pages/admin/AdminOverview.jsx";
+import AdminSellers from "@/pages/admin/AdminSellers.jsx";
+import SellerDetails from "@/pages/admin/AdminSellers.jsx"
 
 export const router = createBrowserRouter([
   {
@@ -112,6 +114,14 @@ export const router = createBrowserRouter([
             index: true,
             element: <AdminOverview />,
           },
+          {
+            path: "sellers",
+            element: <AdminSellers />
+          },
+          {
+            path: "seller/:sellerId",
+            element: <SellerDetails />
+          }
         ],
       },
 
