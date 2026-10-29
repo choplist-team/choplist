@@ -233,7 +233,8 @@ at most 100), are sorted newest first, and return the total so the page can show
 
 **Customer privacy.** Admin order lists show phone numbers masked (`0803****567`).
 The full number comes only from the single-order endpoint with `?reveal=true`, and
-every reveal is written to an audit trail (who, which order, when). Delivery codes
+every reveal is written to an audit trail (who, which order, when) that admins can
+read at `GET /api/admin/audit`. Delivery codes
 and order access keys are never returned by any admin endpoint.
 
 **Payment status** (`paid`, `pending`) is **confirmed by the seller** after they see
@@ -738,6 +739,57 @@ and `resolutionNote` set.
   the report stays open and the request fails with `500`.
 
 Errors: `400 VALIDATION_ERROR` (note too long), `404 REPORT_NOT_FOUND`.
+
+### GET /api/admin/audit
+
+The audit trail: who did what to what, and why. An entry is written for every admin
+action that changes data or reveals private data: suspending, deactivating or
+reinstating a seller, revealing an order's phone number and address, and resolving a
+report. Newest first. Optional filters `?adminId=`, `?action=`, `?targetId=`,
+`?from=` and `?to=` (calendar days in Lagos time, both included), `?page=`,
+`?limit=` (default 20, at most 100).
+
+```
+GET /api/admin/audit?action=order.reveal_phone&from=2026-10-29
+Authorization: Bearer <admin token>
+```
+
+Response `200`:
+
+```json
+{
+  "entries": [
+    {
+      "id": "6720e5a6e4b0a1b2c3d4e5fc",
+      "at": "2026-10-29T15:40:12.000Z",
+      "adminId": "user_2abcDEF",
+      "action": "seller.suspend",
+      "targetType": "seller",
+      "targetId": "6710a1c2e4b0a1b2c3d4e5f6",
+      "targetLabel": "Mama T Kitchen",
+      "reason": "Repeated fake orders"
+    }
+  ],
+  "pagination": { "page": 1, "limit": 20, "total": 1, "totalPages": 1 }
+}
+```
+
+- `action` is one of `seller.suspend`, `seller.deactivate`, `seller.reinstate`,
+  `order.reveal_phone`, `report.resolve`.
+- `targetType` is `seller`, `order` or `report`. `targetId` is a seller id, an order
+  reference or a report id. `targetLabel` is the seller's business name for seller
+  actions (`null` if that seller no longer exists), the reference for orders, and
+  `null` for reports.
+- `adminId` is the admin's Clerk user id. Names are not looked up.
+- `reason` is what the admin typed (the suspension reason, or the note on a report);
+  `null` for a reveal.
+- The trail never holds the phone number, address or note that was revealed, only
+  the fact that it was.
+- It is read-only: there is no way to add, edit or delete entries through the API,
+  and reading it is not itself recorded. Entries are never deleted automatically.
+
+Errors: `400 VALIDATION_ERROR` (unknown `action`, bad date, `from` after `to`,
+`limit` over 100).
 
 ## Menus (seller)
 

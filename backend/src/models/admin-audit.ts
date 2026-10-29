@@ -26,6 +26,9 @@ const adminAuditSchema = new Schema(
 
 adminAuditSchema.index({ createdAt: -1 });
 adminAuditSchema.index({ targetId: 1, createdAt: -1 });
+// The audit page filters by who did it and by what kind of action, newest first.
+adminAuditSchema.index({ adminId: 1, createdAt: -1 });
+adminAuditSchema.index({ action: 1, createdAt: -1 });
 
 export type AdminAuditEntry = InferSchemaType<typeof adminAuditSchema>;
 export type AdminAuditDoc = HydratedDocument<AdminAuditEntry>;
