@@ -1,8 +1,11 @@
 import { Router } from 'express';
+import { Types } from 'mongoose';
+import { ZodError } from 'zod';
 import { AppError } from '../errors.js';
 import { MenuModel, type MenuDoc } from '../models/menu.js';
 import { OrderModel, type OrderDoc } from '../models/order.js';
-import { SellerModel, type SellerDoc } from '../models/seller.js';
+import { SellerModel, isSellerActive, type SellerDoc } from '../models/seller.js';
+import { logEvent } from '../events/log.js';
 import { accessKeyMatches, generateAccessKey } from '../orders/delivery-code.js';
 import { placeOrder } from '../orders/place-order.js';
 import { createRateLimiters, type RateLimitSettings } from '../middleware/rate-limit.js';
@@ -77,6 +80,45 @@ function orderNotFound(): AppError {
   return new AppError(404, 'ORDER_NOT_FOUND', 'No order matches that reference and phone number');
 }
 
+// Why a customer's order was refused, for the admin health page. It stores the
+// error CODE and which menu, never what the customer typed: no phone, name,
+// address or note. (The 4xx codes below are expected, e.g. SOLD_OUT; a 5xx is
+// logged separately by the error handler.)
+const LOGGED_FAILURES = new Set([
+  'SOLD_OUT',
+  'ORDERING_CLOSED',
+  'INVALID_AREA',
+  'INVALID_DELIVERY_DAY',
+  'ITEM_NOT_FOUND',
+  'MENU_NOT_FOUND',
+  'VALIDATION_ERROR',
+]);
+
+async function recordFailedOrder(err: unknown, body: unknown): Promise<void> {
+  const code = err instanceof AppError ? err.code : err instanceof ZodError ? 'VALIDATION_ERROR' : null;
+  if (!code || !LOGGED_FAILURES.has(code)) return;
+
+  // The menu id comes from an untrusted body: use it only if it is a real id of
+  // an existing menu, and take the seller from the menu, not from the body.
+  const rawMenuId = typeof body === 'object' && body !== null ? (body as { menuId?: unknown }).menuId : undefined;
+  let menu: { _id: Types.ObjectId; sellerId: Types.ObjectId } | null = null;
+  if (typeof rawMenuId === 'string' && /^[0-9a-f]{24}$/i.test(rawMenuId)) {
+    try {
+      menu = await MenuModel.findById(rawMenuId, { sellerId: 1 }).lean();
+    } catch {
+      menu = null;
+    }
+  }
+  await logEvent({
+    type: 'order_failed',
+    level: 'warn',
+    code,
+    message: `An order was refused: ${code}`,
+    menuId: menu?._id,
+    sellerId: menu?.sellerId,
+  });
+}
+
 export function createPublicRouter(rateLimits: RateLimitSettings): Router {
   const router = Router();
   const limit = createRateLimiters(rateLimits);
@@ -85,17 +127,24 @@ export function createPublicRouter(rateLimits: RateLimitSettings): Router {
   // open menu right now (the page can say so instead of showing an error).
   router.get('/menu/:slug', async (req, res) => {
     const seller = await SellerModel.findOne({ slug: req.params.slug.toLowerCase() });
-    if (!seller) throw new AppError(404, 'SELLER_NOT_FOUND', 'No seller has this link');
+    // A suspended or deactivated shop looks exactly like one that does not exist.
+    if (!seller || !isSellerActive(seller)) throw new AppError(404, 'SELLER_NOT_FOUND', 'No seller has this link');
 
     const menu = await MenuModel.findOne({ sellerId: seller._id, status: 'open' });
     res.json({ seller: toPublicSeller(seller), menu: menu ? toPublicMenu(menu, new Date()) : null });
   });
 
   router.post('/orders', limit.orders, async (req, res) => {
-    const input = placeOrderSchema.parse(req.body);
     // The customer's secret for this order. Shown once, below; only its hash is kept.
     const accessKey = generateAccessKey();
-    const order = await placeOrder(input, { accessKey });
+    let order: OrderDoc;
+    try {
+      const input = placeOrderSchema.parse(req.body);
+      order = await placeOrder(input, { accessKey });
+    } catch (err) {
+      await recordFailedOrder(err, req.body);
+      throw err;
+    }
 
     const seller = await SellerModel.findById(order.sellerId);
     // The menu's seller always exists; if not, the data is broken: fail loudly.

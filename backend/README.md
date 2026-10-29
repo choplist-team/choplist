@@ -31,6 +31,7 @@ You need Node 20.19 or newer, a MongoDB database, and a Clerk application.
    | `CLERK_PUBLISHABLE_KEY` | Same page, starts with `pk_` |
    | `ALLOWED_ORIGINS` | Frontend origins, comma separated, no trailing slash (`http://localhost:5173`) |
    | `PORT` | Defaults to 5000 |
+   | `ADMIN_CLERK_USER_IDS` | Optional. Clerk user ids (comma separated) allowed to use `/api/admin`. Empty = no admins |
    | `TRUST_PROXY_HOPS` | Proxies in front of the API, default 1. Leave alone locally. On Render see "Deploying on Render" |
    | `MONGO_URI_TEST` | Only for tests, see below |
 

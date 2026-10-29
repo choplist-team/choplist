@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { mongo } from 'mongoose';
 import { z } from 'zod';
-import { authenticate, currentSellerId, currentUserId, requireSeller, requireUser } from '../auth/middleware.js';
+import { assertSellerNotBlocked, authenticate, currentSellerId, currentUserId, requireSeller, requireUser } from '../auth/middleware.js';
 import type { AuthProvider } from '../auth/provider.js';
 import { AppError } from '../errors.js';
 import { SLUG_PATTERN, SellerModel, type SellerDoc } from '../models/seller.js';
@@ -22,6 +22,14 @@ const profileSchema = z.object({
     .regex(SLUG_PATTERN, 'Use lowercase letters, numbers and single hyphens, e.g. mama-ts-kitchen')
     .optional(),
   phone: nigerianPhone,
+  // Optional contact address. Omitted = leave as it is; "" = remove it.
+  email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .max(120)
+    .refine((value) => value === '' || z.email().safeParse(value).success, 'Enter a valid email address')
+    .optional(),
   payment: z.object({
     bankName: z.string().trim().min(2).max(60),
     accountNumber: z
@@ -43,6 +51,8 @@ function toSellerResponse(seller: SellerDoc) {
     businessName: seller.businessName,
     slug: seller.slug,
     phone: seller.phone,
+    email: seller.email ?? null,
+    status: seller.status,
     payment: {
       bankName: seller.payment.bankName,
       accountNumber: seller.payment.accountNumber,
@@ -67,7 +77,8 @@ async function createProfile(clerkUserId: string, input: ProfileInput): Promise<
 
   for (const slug of slugs) {
     try {
-      return await SellerModel.create({ ...input, slug, clerkUserId });
+      const { email, ...rest } = input;
+      return await SellerModel.create({ ...rest, ...(email ? { email } : {}), slug, clerkUserId });
     } catch (err) {
       // The unique index, not a "does it exist?" read, decides who gets a
       // slug, so two sellers signing up at once can't both get it.
@@ -80,6 +91,8 @@ async function createProfile(clerkUserId: string, input: ProfileInput): Promise<
 
 async function updateProfile(seller: SellerDoc, input: ProfileInput): Promise<SellerDoc> {
   seller.set({ businessName: input.businessName, phone: input.phone, payment: input.payment });
+  if (input.email === '') seller.set('email', undefined);
+  else if (input.email) seller.email = input.email;
   // Keep the current slug unless a new one was sent. Changing it breaks the
   // old public link (documented limit).
   if (input.slug) seller.slug = input.slug;
@@ -113,6 +126,9 @@ export function createSellerRouter(auth: AuthProvider): Router {
 
     const existing = await SellerModel.findOne({ clerkUserId });
     if (existing) {
+      // This route uses requireUser (the profile may not exist yet), so the
+      // suspension check that requireSeller does must be repeated here.
+      assertSellerNotBlocked(existing);
       res.json(toSellerResponse(await updateProfile(existing, input)));
       return;
     }
@@ -128,6 +144,7 @@ export function createSellerRouter(auth: AuthProvider): Router {
       if (duplicateKeyField(err) !== 'clerkUserId') throw err;
       const winner = await SellerModel.findOne({ clerkUserId });
       if (!winner) throw err;
+      assertSellerNotBlocked(winner);
       res.json(toSellerResponse(await updateProfile(winner, input)));
       return;
     }

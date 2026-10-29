@@ -23,6 +23,7 @@ try {
 const app = createApp({
   allowedOrigins: config.ALLOWED_ORIGINS,
   trustProxyHops: config.TRUST_PROXY_HOPS,
+  adminClerkUserIds: config.ADMIN_CLERK_USER_IDS,
   auth: createClerkAuth({
     secretKey: config.CLERK_SECRET_KEY,
     publishableKey: config.CLERK_PUBLISHABLE_KEY,

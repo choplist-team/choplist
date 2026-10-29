@@ -1,6 +1,7 @@
 import cors from 'cors';
 import express, { type Express } from 'express';
 import helmet from 'helmet';
+import { createAdminRouter } from './admin/router.js';
 import type { AuthProvider } from './auth/provider.js';
 import { errorHandler, notFound } from './middleware/error-handler.js';
 import { DEFAULT_RATE_LIMITS, type RateLimitSettings } from './middleware/rate-limit.js';
@@ -19,6 +20,8 @@ export type AppOptions = {
   auth: AuthProvider;
   // Tests use small limits to exercise them, large ones to stay out of the way.
   rateLimits?: RateLimitSettings;
+  // Clerk user ids allowed to use /api/admin. Empty = nobody.
+  adminClerkUserIds?: string[];
   // Proxies in front of the app. Default 1; Render has more (see README).
   trustProxyHops?: number;
 };
@@ -53,6 +56,7 @@ export function createApp(options: AppOptions): Express {
     res.json({ status: 'ok' });
   });
 
+  app.use('/api/admin', createAdminRouter(options.auth, options.adminClerkUserIds ?? []));
   app.use('/api/sellers', createSellerRouter(options.auth));
   app.use('/api/menus', createMenuRouter(options.auth));
   app.use('/api/orders', createOrderRouter(options.auth));

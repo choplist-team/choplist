@@ -48,6 +48,8 @@ Every error, on every route, has this shape:
 | 400 | `INVALID_AREA` | Delivery area is not one the menu lists (the message lists them) |
 | 400 | `INVALID_DELIVERY_DAY` | Delivery day is not one the menu lists (the message lists them) |
 | 401 | `UNAUTHENTICATED` | No valid Clerk token on a seller route |
+| 403 | `FORBIDDEN` | Signed in, but not an administrator, on an `/api/admin` route |
+| 403 | `ACCOUNT_SUSPENDED` | The seller's account was suspended or deactivated by an admin; every seller route refuses until it is reinstated. Show the message and a support contact |
 | 403 | `PROFILE_REQUIRED` | Signed in, but no seller profile yet: show onboarding, then `PUT /api/sellers/me` |
 | 404 | `NOT_FOUND` | No route matches the method and path |
 | 404 | `MENU_NOT_FOUND` | No such menu for this seller (also for another seller's menu, and malformed ids) |
@@ -132,6 +134,8 @@ Response `200`:
   "businessName": "Mama T's Kitchen",
   "slug": "mama-ts-kitchen",
   "phone": "+2348031234567",
+  "email": "titi@example.com",
+  "status": "active",
   "payment": {
     "bankName": "GTBank",
     "accountNumber": "0123456789",
@@ -142,7 +146,11 @@ Response `200`:
 }
 ```
 
-Errors: `401 UNAUTHENTICATED`, `403 PROFILE_REQUIRED` (no profile yet).
+`email` is `null` when the seller gave none. `status` is `active` (the only value a
+seller can see in a normal response; the others are described below).
+
+Errors: `401 UNAUTHENTICATED`, `403 PROFILE_REQUIRED` (no profile yet),
+`403 ACCOUNT_SUSPENDED`.
 
 ### PUT /api/sellers/me
 
@@ -156,6 +164,8 @@ only `slug` is optional.
 - `phone` accepts `0803 123 4567`, `+234 803 123 4567` or `2348031234567` and is
   stored as `+2348031234567`.
 - `payment.accountNumber` is exactly 10 digits (NUBAN), as a string.
+- `email` is optional: a valid address (stored lower-case). Leave it out to keep
+  the current one; send `""` to remove it. Admins see it next to the phone.
 
 Request:
 
@@ -181,6 +191,67 @@ Response `201` (profile created) or `200` (profile updated), same body as
 `GET /api/sellers/me`.
 
 Errors: `400 VALIDATION_ERROR`, `401 UNAUTHENTICATED`, `409 SLUG_TAKEN`.
+
+## Suspended and deactivated sellers
+
+An admin can set a seller's account to `suspended` or `deactivated` (nothing is
+deleted, and an admin can reinstate it). While it is not `active`:
+
+- Every seller route (`/api/sellers/*`, `/api/menus/*`, `/api/orders/*`) answers
+  `403 ACCOUNT_SUSPENDED`, including `PUT /api/sellers/me`. The frontend should show
+  the message and a support contact instead of the dashboard.
+- The seller's public link, `GET /api/public/menu/:slug`, is a `404 SELLER_NOT_FOUND`,
+  the same as a link that does not exist.
+- A new order on one of their menus is refused with `409 ORDERING_CLOSED`. The
+  answer does not say the account is suspended. (There is a window of a few
+  milliseconds around a suspension in which an order already in progress can
+  still be saved.)
+- Orders already placed stay. Customers can still look them up. The seller cannot
+  mark them paid or delivered until the account is reinstated.
+
+Sellers created before account status existed have no `status` stored; they are
+treated as `active`. `npm run backfill:admin` writes it.
+
+## Admin console
+
+Everything under `/api/admin` is for ChopList administrators only. This section is
+the contract the admin endpoints follow; each endpoint is documented below as it is
+built.
+
+**Who is an admin.** The Clerk user ids listed in the `ADMIN_CLERK_USER_IDS`
+environment variable (comma separated; see `.env.example`). An admin is a person, not
+a seller: they need no shop. Changing the list needs a restart (a redeploy on
+Render). With the variable empty or unset nobody is an admin.
+
+- No token: `401 UNAUTHENTICATED`.
+- Signed in but not listed: `403 FORBIDDEN`.
+
+**Lists** (every list endpoint) take `?page=` (from 1) and `?limit=` (default 20,
+at most 100), are sorted newest first, and return the total so the page can show
+"page 2 of 7".
+
+**Customer privacy.** Admin order lists show phone numbers masked (`0803****567`).
+The full number comes only from the single-order endpoint with `?reveal=true`, and
+every reveal is written to an audit trail (who, which order, when). Delivery codes
+and order access keys are never returned by any admin endpoint.
+
+**Payment status** (`paid`, `pending`) is **confirmed by the seller** after they see
+the bank transfer. ChopList never handles money, so it cannot verify a payment.
+
+**Possible duplicates.** When an order is placed, ChopList stores a fingerprint of
+the customer's phone number, the menu and the items and quantities. If another
+order with the same fingerprint (not cancelled) exists within 10 minutes of it,
+the order is marked `possibleDuplicate`. It only says "possible": a customer may
+really order twice. If two identical orders arrive at the same moment, both may be
+marked.
+
+**Phone numbers** are stored in one form (`+2348031234567`), whichever way the
+customer typed them (`0803 123 4567`, `+234 803 123 4567`). Orders saved before
+this was enforced are fixed by `npm run backfill:admin`.
+
+**Event log.** Failed order attempts and server errors are recorded with an error
+code, the menu and the seller, and never the customer's phone, name, address or any
+delivery code. Events are deleted automatically after 60 days.
 
 ## Menus (seller)
 
