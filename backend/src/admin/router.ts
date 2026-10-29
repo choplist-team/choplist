@@ -10,6 +10,7 @@ import {
   menuAnalytics,
   menuAnalyticsQuery,
 } from './analytics.js';
+import { auditListQuery, listAudit } from './audit.js';
 import { listOrders, orderDetail, orderDetailQuery, orderListQuery } from './orders.js';
 import { eventListQuery, health, listEvents, listReports, parseReportId, reportListQuery, resolveBody, resolveReport } from './support.js';
 import { overview } from './overview.js';
@@ -99,6 +100,11 @@ export function createAdminRouter(auth: AuthProvider, adminIds: readonly string[
   router.patch('/reports/:id/resolve', async (req, res) => {
     const { note } = resolveBody.parse(req.body ?? {});
     res.json(await resolveReport({ id: parseReportId(req.params.id), adminId: currentAdminId(req), note }));
+  });
+
+  // ---- Audit trail ----
+  router.get('/audit', async (req, res) => {
+    res.json(await listAudit(auditListQuery.parse(req.query)));
   });
 
   return router;
