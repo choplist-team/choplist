@@ -9,6 +9,7 @@ import { recordMenuView } from '../analytics/record-view.js';
 import { logEvent } from '../events/log.js';
 import { accessKeyMatches, generateAccessKey } from '../orders/delivery-code.js';
 import { placeOrder } from '../orders/place-order.js';
+import { missingOrderBody, submitMissingOrderReport } from '../support/missing-order.js';
 import { createRateLimiters, type RateLimitSettings } from '../middleware/rate-limit.js';
 import { lookupSchema, placeOrderSchema } from './schema.js';
 
@@ -157,6 +158,15 @@ export function createPublicRouter(rateLimits: RateLimitSettings): Router {
       }
     }
     res.status(204).end();
+  });
+
+  // "My order is missing." Anyone can send it, so it is strictly rate limited and
+  // ALWAYS answers the same way: the customer is never told whether an order
+  // matched, or the form could be used to test which references exist. The admin
+  // sees the result on the support page.
+  router.post('/orders/report-missing', limit.reports, async (req, res) => {
+    await submitMissingOrderReport(missingOrderBody.parse(req.body));
+    res.status(201).json({ received: true });
   });
 
   router.post('/orders', limit.orders, async (req, res) => {

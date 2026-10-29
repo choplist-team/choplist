@@ -3,10 +3,11 @@ import { MenuModel } from './models/menu.js';
 import { AdminAuditModel } from './models/admin-audit.js';
 import { EventLogModel } from './models/event-log.js';
 import { MenuViewDailyModel } from './models/menu-view-daily.js';
+import { MissingOrderReportModel } from './models/missing-order-report.js';
 import { OrderModel } from './models/order.js';
 import { SellerModel } from './models/seller.js';
 
-const models = [SellerModel, MenuModel, OrderModel, EventLogModel, AdminAuditModel, MenuViewDailyModel];
+const models = [SellerModel, MenuModel, OrderModel, EventLogModel, AdminAuditModel, MenuViewDailyModel, MissingOrderReportModel];
 
 export async function connectDb(uri: string): Promise<void> {
   await mongoose.connect(uri, {

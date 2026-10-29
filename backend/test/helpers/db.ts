@@ -3,6 +3,7 @@ import { MenuModel } from '../../src/models/menu.js';
 import { AdminAuditModel } from '../../src/models/admin-audit.js';
 import { EventLogModel } from '../../src/models/event-log.js';
 import { MenuViewDailyModel } from '../../src/models/menu-view-daily.js';
+import { MissingOrderReportModel } from '../../src/models/missing-order-report.js';
 import { OrderModel } from '../../src/models/order.js';
 import { SellerModel } from '../../src/models/seller.js';
 
@@ -24,7 +25,7 @@ export async function connectTestDb(name: string): Promise<void> {
   }
   await mongoose.connection.dropDatabase();
   await Promise.all(
-    [SellerModel, MenuModel, OrderModel, EventLogModel, AdminAuditModel, MenuViewDailyModel].map((model) => model.createIndexes()),
+    [SellerModel, MenuModel, OrderModel, EventLogModel, AdminAuditModel, MenuViewDailyModel, MissingOrderReportModel].map((model) => model.createIndexes()),
   );
 }
 
