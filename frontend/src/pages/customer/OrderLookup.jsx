@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { useLookupOrder } from "@/hooks/useLookupOrder";
 import { FieldError } from "@/components/field-error";
 import { hasErrors, validateOrderLookup } from "@/lib/validation";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 const formatPrice = (price) =>
   new Intl.NumberFormat("en-NG", {
@@ -142,6 +142,16 @@ export default function OrderLookup() {
             {lookup.isFetching ? "Searching..." : "Find my order"}
           </Button>
         </form>
+
+        <p className="mt-4 text-center text-sm text-muted-foreground">
+          Paid and nothing arrived?{" "}
+          <Link
+            to="/order-lookup/missing"
+            className="font-semibold text-primary underline-offset-4 hover:underline"
+          >
+            Report a missing order
+          </Link>
+        </p>
 
         <Button
           type="button"

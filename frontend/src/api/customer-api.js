@@ -33,3 +33,11 @@ export const lookupOrder = (ref, phoneLast4) => {
     accessKey ? { headers: { "X-Order-Key": accessKey } } : {}
   );
 };
+
+// "My order is missing". The server always answers { received: true }, whether
+// or not it found an order, and the page must not say otherwise.
+export const reportMissingOrder = ({ ref, phoneLast4, message }) =>
+  apiRequest("/public/orders/report-missing", {
+    method: "POST",
+    body: { ref, phoneLast4, message },
+  });
