@@ -13,7 +13,7 @@ import { useGetMenus } from "@/hooks/useGetMenus";
 import { useGetMenuPrepSheet } from "@/hooks/useGetMenuPrepSheet";
 import SellerHeader from "@/components/seller/Header";
 import { useCurrentSeller } from "@/hooks/useCurrentSeller";
-import { exportPrepSheet } from "@/lib/exportPrepSheet";
+
 
 const formatPrice = (amount = 0) =>
   new Intl.NumberFormat("en-NG", {
@@ -115,23 +115,26 @@ export default function Prep() {
     amount: 0,
   };
 
-  const handleExportPrepSheet = async () => {
-    setExportError("");
 
-    try {
-      await exportPrepSheet({
-        businessName: seller?.businessName || "ChopList Seller",
-        menuTitle: currentMenu?.title || "Preparation sheet",
-        items,
-        totals,
-        paidOnly,
-      });
-    } catch (error) {
-      alert("Prep sheet export failed:", error);
+const handleExportPrepSheet = async () => {
+  setExportError("");
 
-      setExportError(error instanceof Error ? error.message : String(error));
-    }
-  };
+  try {
+    const { exportPrepSheet } = await import("@/lib/exportPrepSheet");
+
+    await exportPrepSheet({
+      businessName: seller?.businessName || "ChopList Seller",
+      menuTitle: currentMenu?.title || "Preparation sheet",
+      items,
+      totals,
+      paidOnly,
+    });
+  } catch (error) {
+    console.error("Prep sheet export failed:", error);
+    alert("Prep sheet export failed. Please try again.");
+  }
+};
+
 
   if (menusPending) {
     return (
