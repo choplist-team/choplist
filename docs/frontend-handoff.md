@@ -69,10 +69,11 @@ Everything is under `/api/admin`. Sign in with Clerk like sellers and send the t
 `Authorization: Bearer <token>`.
 
 **Who is an admin?** A Clerk user id listed in the backend's `ADMIN_CLERK_USER_IDS`
-setting. There is no "who am I" endpoint, so find out by calling an admin endpoint (for
-example `GET /api/admin/overview`) and treating `403 FORBIDDEN` as "not an admin". Do not
-hard-code ids. To try it locally, put your Clerk user id in `ADMIN_CLERK_USER_IDS` in the
-root `.env`. If you want a proper `GET /api/admin/me`, ask the backend engineer.
+setting. Find out with `GET /api/admin/me`: `200` is an admin, `403 FORBIDDEN` is "not an
+admin", `401` is not signed in. Do not hard-code ids. To try it locally, put your Clerk
+user id in `ADMIN_CLERK_USER_IDS` in the root `.env`. An admin does not need a seller
+profile. Admins sign in at `/admin/sign-in` (no sign-up there); `/admin` is guarded by
+that check.
 
 ### Pages and the calls behind them
 

@@ -1,5 +1,10 @@
 import { apiRequest } from "./api-client";
 
+// Resolves for an admin; rejects with status 401 (not signed in) or 403 (not an admin).
+export function getAdminMe(getToken) {
+  return apiRequest("/admin/me", { requiresAuth: true }, getToken);
+}
+
 export function getAdminOverview(getToken) {
   return apiRequest("/admin/overview", { requiresAuth: true }, getToken);
 }
