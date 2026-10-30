@@ -32,6 +32,13 @@ export function createAdminRouter(auth: AuthProvider, adminIds: readonly string[
   const router = Router();
   router.use(authenticate(auth), requireAdmin(adminIds));
 
+  // "Am I an admin?" for the frontend. Getting here already proves it (the guard
+  // above answers 401 or 403 otherwise), so there is nothing to look up. No id
+  // or other detail is returned.
+  router.get('/me', (_req, res) => {
+    res.json({ admin: true });
+  });
+
   // Platform numbers for the dashboard, with the definitions of each.
   router.get('/overview', async (_req, res) => {
     res.json(await overview());

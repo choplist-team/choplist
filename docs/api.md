@@ -255,6 +255,17 @@ this was enforced are fixed by `npm run backfill:admin`.
 code, the menu and the seller, and never the customer's phone, name, address or any
 delivery code. Events are deleted automatically after 60 days.
 
+### GET /api/admin/me
+
+Answers "am I an admin?" for the frontend's admin guard. `200 { "admin": true }` for
+an admin, `401 UNAUTHENTICATED` when not signed in, `403 FORBIDDEN` for a signed-in
+user who is not an admin. Nothing else is returned.
+
+```
+GET /api/admin/me
+Authorization: Bearer <token>
+```
+
 ### GET /api/admin/overview
 
 Platform numbers for the dashboard. Each definition is returned as text so the

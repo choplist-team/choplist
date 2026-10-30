@@ -3,6 +3,7 @@ import Layout from "../layout.jsx";
 
 import ProtectedRoute from "./ProtectedRoute.jsx";
 import RequireSellerProfile from "./RequireSellerProfile.jsx";
+import RequireAdmin from "./RequireAdmin.jsx";
 
 // Converts a dynamic import into a React Router lazy route.
 const lazyPage = (importer) => async () => ({
@@ -95,37 +96,49 @@ export const router = createBrowserRouter([
         lazy: lazyPage(() => import("../pages/customer/OrderLookup.jsx")),
       },
 
-      // Admin routes
+      // Admin sign-in (public). There is no admin sign-up: admins are the
+      // accounts listed in the API's ADMIN_CLERK_USER_IDS.
       {
-        path: "admin",
-        lazy: lazyPage(() => import("../pages/admin/AdminLayout.jsx")),
+        path: "admin/sign-in/*",
+        lazy: lazyPage(() => import("../pages/admin/AdminSignIn.jsx")),
+      },
+
+      // Admin routes, behind the admin check
+      {
+        element: <RequireAdmin />,
         children: [
           {
-            index: true,
-            lazy: lazyPage(() => import("../pages/admin/AdminOverview.jsx")),
-          },
-          {
-            path: "sellers",
-            lazy: lazyPage(() => import("../pages/admin/AdminSellers.jsx")),
-          },
-          {
-            path: "sellers/:sellerId",
-            lazy: lazyPage(() => import("../pages/admin/SellerDetails.jsx")),
-          },
-          {
-            path: "orders",
-            lazy: lazyPage(() => import("../pages/admin/AdminOrders.jsx")),
-          },
-          {
-            path: "analytics",
-            lazy: lazyPage(() => import("../pages/admin/AdminAnalytics.jsx")),
-          },
+            path: "admin",
+            lazy: lazyPage(() => import("../pages/admin/AdminLayout.jsx")),
+            children: [
+              {
+                index: true,
+                lazy: lazyPage(() => import("../pages/admin/AdminOverview.jsx")),
+              },
+              {
+                path: "sellers",
+                lazy: lazyPage(() => import("../pages/admin/AdminSellers.jsx")),
+              },
+              {
+                path: "sellers/:sellerId",
+                lazy: lazyPage(() => import("../pages/admin/SellerDetails.jsx")),
+              },
+              {
+                path: "orders",
+                lazy: lazyPage(() => import("../pages/admin/AdminOrders.jsx")),
+              },
+              {
+                path: "analytics",
+                lazy: lazyPage(() => import("../pages/admin/AdminAnalytics.jsx")),
+              },
 
-          {
-            path: "system-health",
-            lazy: lazyPage(() =>
-              import("../pages/admin/AdminSystemHealth.jsx")
-            ),
+              {
+                path: "system-health",
+                lazy: lazyPage(() =>
+                  import("../pages/admin/AdminSystemHealth.jsx")
+                ),
+              },
+            ],
           },
         ],
       },
