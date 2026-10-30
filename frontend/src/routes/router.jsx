@@ -24,7 +24,7 @@ import Delivery from "@/pages/seller/Delivery.jsx";
 import AdminLayout from "@/pages/admin/AdminLayout.jsx";
 import AdminOverview from "../pages/admin/AdminOverview.jsx";
 import AdminSellers from "@/pages/admin/AdminSellers.jsx";
-import SellerDetails from "@/pages/admin/AdminSellers.jsx"
+import SellerDetails from "@/pages/admin/SellerDetails.jsx"
 
 export const router = createBrowserRouter([
   {
@@ -119,7 +119,7 @@ export const router = createBrowserRouter([
             element: <AdminSellers />
           },
           {
-            path: "seller/:sellerId",
+            path: "sellers/:sellerId",
             element: <SellerDetails />
           }
         ],
