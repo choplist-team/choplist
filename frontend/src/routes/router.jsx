@@ -1,30 +1,13 @@
 import { createBrowserRouter } from "react-router-dom";
 import Layout from "../layout.jsx";
-import Home from "../pages/home.jsx";
-
-import CustomerMenu from "../pages/customer/CustomerMenu.jsx";
-import CustomerCheckout from "@/pages/customer/CustomerCheckout.jsx";
-import CustomerConfirmation from "@/pages/customer/CustomerConfirmation.jsx";
-import OrderLookup from "@/pages/customer/OrderLookup.jsx";
-
-import CreateAccount from "../pages/seller/sign-up.jsx";
-import Login from "../pages/seller/login.jsx";
-import SellerOnboarding from "../pages/seller/onboarding.jsx";
-import SellerDashboard from "../pages/seller/SellerDashboard.jsx";
-import CreateMenu from "../pages/seller/CreateMenu.jsx";
-import SellerOrders from "../pages/seller/SellerOrders.jsx";
-import EditMenu from "../pages/seller/EditMenu.jsx";
 
 import ProtectedRoute from "./ProtectedRoute.jsx";
 import RequireSellerProfile from "./RequireSellerProfile.jsx";
-import NotFound from "./NotFound.jsx";
-import EditProfile from "@/pages/seller/EditProfile.jsx";
-import Prep from "@/pages/seller/Prep.jsx";
-import Delivery from "@/pages/seller/Delivery.jsx";
-import AdminLayout from "@/pages/admin/AdminLayout.jsx";
-import AdminOverview from "../pages/admin/AdminOverview.jsx";
-import AdminSellers from "@/pages/admin/AdminSellers.jsx";
-import SellerDetails from "@/pages/admin/SellerDetails.jsx"
+
+// Converts a dynamic import into a React Router lazy route.
+const lazyPage = (importer) => async () => ({
+  Component: (await importer()).default,
+});
 
 export const router = createBrowserRouter([
   {
@@ -33,101 +16,123 @@ export const router = createBrowserRouter([
     children: [
       {
         index: true,
-        element: <Home />,
+        lazy: lazyPage(() => import("../pages/home.jsx")),
       },
 
       // Public seller authentication
       {
         path: "seller/sign-up/*",
-        element: <CreateAccount />,
+        lazy: lazyPage(() => import("../pages/seller/sign-up.jsx")),
       },
       {
         path: "seller/sign-in/*",
-        element: <Login />,
+        lazy: lazyPage(() => import("../pages/seller/login.jsx")),
       },
 
+      // Protected seller routes
       {
         element: <ProtectedRoute />,
         children: [
           {
             path: "seller/onboarding",
-            element: <SellerOnboarding />,
+            lazy: lazyPage(() => import("../pages/seller/onboarding.jsx")),
           },
           {
             path: "seller/dashboard",
-            element: <SellerDashboard />,
+            lazy: lazyPage(() => import("../pages/seller/SellerDashboard.jsx")),
           },
           {
             path: "seller/profile/edit",
-            element: <EditProfile />,
+            lazy: lazyPage(() => import("../pages/seller/EditProfile.jsx")),
           },
           {
             element: <RequireSellerProfile />,
             children: [
               {
                 path: "seller/menu/new",
-                element: <CreateMenu />,
+                lazy: lazyPage(() => import("../pages/seller/CreateMenu.jsx")),
               },
               {
                 path: "seller/menu/:id/edit",
-                element: <EditMenu />,
+                lazy: lazyPage(() => import("../pages/seller/EditMenu.jsx")),
               },
               {
                 path: "seller/orders",
-                element: <SellerOrders />,
+                lazy: lazyPage(() =>
+                  import("../pages/seller/SellerOrders.jsx")
+                ),
               },
               {
                 path: "seller/prep",
-                element: <Prep />,
+                lazy: lazyPage(() => import("../pages/seller/Prep.jsx")),
               },
               {
                 path: "seller/delivery",
-                element: <Delivery />,
+                lazy: lazyPage(() => import("../pages/seller/Delivery.jsx")),
               },
             ],
           },
         ],
       },
 
+      // Customer routes
       {
         path: "shop/:slug",
-        element: <CustomerMenu />,
+        lazy: lazyPage(() => import("../pages/customer/CustomerMenu.jsx")),
       },
       {
         path: "shop/:slug/checkout",
-        element: <CustomerCheckout />,
+        lazy: lazyPage(() => import("../pages/customer/CustomerCheckout.jsx")),
       },
       {
         path: "shop/:slug/confirmation",
-        element: <CustomerConfirmation />,
+        lazy: lazyPage(() =>
+          import("../pages/customer/CustomerConfirmation.jsx")
+        ),
       },
       {
         path: "order-lookup",
-        element: <OrderLookup />,
+        lazy: lazyPage(() => import("../pages/customer/OrderLookup.jsx")),
       },
 
+      // Admin routes
       {
         path: "admin",
-        element: <AdminLayout />,
+        lazy: lazyPage(() => import("../pages/admin/AdminLayout.jsx")),
         children: [
           {
             index: true,
-            element: <AdminOverview />,
+            lazy: lazyPage(() => import("../pages/admin/AdminOverview.jsx")),
           },
           {
             path: "sellers",
-            element: <AdminSellers />
+            lazy: lazyPage(() => import("../pages/admin/AdminSellers.jsx")),
           },
           {
             path: "sellers/:sellerId",
-            element: <SellerDetails />
-          }
+            lazy: lazyPage(() => import("../pages/admin/SellerDetails.jsx")),
+          },
+          {
+            path: "orders",
+            lazy: lazyPage(() => import("../pages/admin/AdminOrders.jsx")),
+          },
+          {
+            path: "analytics",
+            lazy: lazyPage(() => import("../pages/admin/AdminAnalytics.jsx")),
+          },
+
+          {
+            path: "system-health",
+            lazy: lazyPage(() =>
+              import("../pages/admin/AdminSystemHealth.jsx")
+            ),
+          },
         ],
       },
 
       {
         path: "*",
-        element: <NotFound />,
+        lazy: lazyPage(() => import("./NotFound.jsx")),
       },
     ],
   },
