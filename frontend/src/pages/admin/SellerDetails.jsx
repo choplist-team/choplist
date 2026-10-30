@@ -1,6 +1,7 @@
+import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useAuth } from "@clerk/react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   AlertCircle,
@@ -12,7 +13,12 @@ import {
   Utensils,
 } from "lucide-react";
 
-import { getAdminSeller } from "@/api/admin-api";
+import {
+  getAdminSeller,
+  suspendAdminSeller,
+  deactivateAdminSeller,
+  reinstateAdminSeller,
+} from "@/api/admin-api";
 
 const ORDER_STATUSES = [
   { key: "total", label: "Total orders" },
@@ -117,6 +123,74 @@ function InfoItem({ label, value }) {
 export default function SellerDetails() {
   const { sellerId } = useParams();
   const { getToken } = useAuth();
+  const queryClient = useQueryClient();
+
+  const [action, setAction] = useState("");
+  const [reason, setReason] = useState("");
+  const [feedback, setFeedback] = useState(null);
+
+  const statusMutation = useMutation({
+    mutationFn: async ({ actionType, sellerId, reason }) => {
+      if (actionType === "suspend") {
+        return suspendAdminSeller(getToken, sellerId, reason);
+      }
+
+      if (actionType === "deactivate") {
+        return deactivateAdminSeller(getToken, sellerId, reason);
+      }
+
+      return reinstateAdminSeller(getToken, sellerId, reason);
+    },
+    onSuccess: async () => {
+      setFeedback({
+        type: "success",
+        message: "Seller status updated successfully.",
+      });
+      setAction("");
+      setReason("");
+
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["admin", "seller", sellerId],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["admin", "sellers"],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["admin", "overview"],
+        }),
+      ]);
+    },
+    onError: (error) => {
+      setFeedback({
+        type: "error",
+        message: error?.message || "Unable to update seller status.",
+      });
+    },
+  });
+
+  function handleStatusAction(event) {
+    event.preventDefault();
+
+    const trimmedReason = reason.trim();
+
+    if (
+      (action === "suspend" || action === "deactivate") &&
+      (trimmedReason.length < 3 || trimmedReason.length > 300)
+    ) {
+      setFeedback({
+        type: "error",
+        message: "The reason must be between 3 and 300 characters.",
+      });
+      return;
+    }
+
+    statusMutation.mutate({
+      actionType: action,
+      sellerId,
+      reason: trimmedReason,
+    });
+  }
 
   const {
     data: seller,
@@ -225,10 +299,7 @@ export default function SellerDetails() {
           disabled={isFetching}
           className="inline-flex items-center justify-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
         >
-          <RefreshCw
-            size={16}
-            className={isFetching ? "animate-spin" : ""}
-          />
+          <RefreshCw size={16} className={isFetching ? "animate-spin" : ""} />
           Refresh
         </button>
       </div>
@@ -251,13 +322,177 @@ export default function SellerDetails() {
 
             {seller.slug && (
               <p className="mt-2 text-sm text-muted-foreground">
-                Shop slug: <span className="font-medium text-foreground">{seller.slug}</span>
+                Shop slug:{" "}
+                <span className="font-medium text-foreground">
+                  {seller.slug}
+                </span>
               </p>
             )}
           </div>
         </div>
 
         <StatusBadge status={seller.status} />
+      </div>
+
+      <div className="rounded-xl border border-border bg-card p-5 sm:p-6">
+        <h2 className="font-semibold text-foreground">
+          Seller account actions
+        </h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Manage this seller's access to ChopList.
+        </p>
+
+        {feedback && (
+          <div
+            role={feedback.type === "error" ? "alert" : "status"}
+            className={`mt-4 rounded-lg border p-3 text-sm ${
+              feedback.type === "error"
+                ? "border-red-200 bg-red-50 text-red-800"
+                : "border-green-200 bg-green-50 text-green-800"
+            }`}
+          >
+            {feedback.message}
+          </div>
+        )}
+
+        <div className="mt-4 flex flex-wrap gap-3">
+          {seller.status === "active" && (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setAction("suspend");
+                  setReason("");
+                  setFeedback(null);
+                }}
+                className="rounded-lg border border-amber-300 px-4 py-2 text-sm font-medium text-amber-800 hover:bg-amber-50"
+              >
+                Suspend seller
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setAction("deactivate");
+                  setReason("");
+                  setFeedback(null);
+                }}
+                className="rounded-lg border border-red-300 px-4 py-2 text-sm font-medium text-red-800 hover:bg-red-50"
+              >
+                Deactivate seller
+              </button>
+            </>
+          )}
+
+          {seller.status === "suspended" && (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setAction("reinstate");
+                  setReason("");
+                  setFeedback(null);
+                }}
+                className="rounded-lg border border-green-300 px-4 py-2 text-sm font-medium text-green-800 hover:bg-green-50"
+              >
+                Reinstate seller
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setAction("deactivate");
+                  setReason("");
+                  setFeedback(null);
+                }}
+                className="rounded-lg border border-red-300 px-4 py-2 text-sm font-medium text-red-800 hover:bg-red-50"
+              >
+                Deactivate seller
+              </button>
+            </>
+          )}
+
+          {seller.status === "deactivated" && (
+            <button
+              type="button"
+              onClick={() => {
+                setAction("reinstate");
+                setReason("");
+                setFeedback(null);
+              }}
+              className="rounded-lg border border-green-300 px-4 py-2 text-sm font-medium text-green-800 hover:bg-green-50"
+            >
+              Reinstate seller
+            </button>
+          )}
+        </div>
+
+        {action && (
+          <form
+            onSubmit={handleStatusAction}
+            className="mt-5 space-y-4 rounded-lg border border-border p-4"
+          >
+            <div>
+              <h3 className="font-medium text-foreground">
+                Confirm {action} seller
+              </h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {action === "suspend" &&
+                  "The seller's account will be suspended."}
+                {action === "deactivate" &&
+                  "The seller's account will be deactivated."}
+                {action === "reinstate" &&
+                  "The seller's account will be reinstated."}
+              </p>
+            </div>
+
+            <label className="block">
+              <span className="text-sm font-medium text-foreground">
+                Reason {action === "reinstate" ? "(optional)" : "(required)"}
+              </span>
+              <textarea
+                value={reason}
+                onChange={(event) => setReason(event.target.value)}
+                rows={3}
+                maxLength={300}
+                required={action !== "reinstate"}
+                minLength={action === "reinstate" ? undefined : 3}
+                placeholder={
+                  action === "reinstate"
+                    ? "Optional reason for reinstating this seller"
+                    : "Explain why this action is necessary"
+                }
+                className="mt-2 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+              />
+              <span className="mt-1 block text-xs text-muted-foreground">
+                {reason.trim().length}/300 characters
+                {action !== "reinstate" && " (minimum 3)"}
+              </span>
+            </label>
+
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="submit"
+                disabled={statusMutation.isPending}
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {statusMutation.isPending ? "Updating..." : "Confirm action"}
+              </button>
+
+              <button
+                type="button"
+                disabled={statusMutation.isPending}
+                onClick={() => {
+                  setAction("");
+                  setReason("");
+                }}
+                className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted disabled:opacity-60"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        )}
       </div>
 
       {/* Seller information */}
@@ -268,8 +503,14 @@ export default function SellerDetails() {
           <InfoItem label="Business name" value={seller.businessName} />
           <InfoItem label="Email" value={seller.email} />
           <InfoItem label="Phone" value={seller.phone} />
-          <InfoItem label="Registered" value={formatDate(seller.registeredAt)} />
-          <InfoItem label="Last active" value={formatDateTime(seller.lastActiveAt)} />
+          <InfoItem
+            label="Registered"
+            value={formatDate(seller.registeredAt)}
+          />
+          <InfoItem
+            label="Last active"
+            value={formatDateTime(seller.lastActiveAt)}
+          />
           <InfoItem
             label="Status last changed"
             value={formatDateTime(seller.statusChangedAt)}
@@ -347,7 +588,9 @@ export default function SellerDetails() {
                     </h3>
                     <p className="mt-1 text-sm text-muted-foreground">
                       {typeof menu.itemCount === "number"
-                        ? `${menu.itemCount} item${menu.itemCount === 1 ? "" : "s"}`
+                        ? `${menu.itemCount} item${
+                            menu.itemCount === 1 ? "" : "s"
+                          }`
                         : "Item count unavailable"}
                     </p>
                   </div>
