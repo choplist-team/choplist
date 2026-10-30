@@ -285,3 +285,33 @@ export function validateOrderLookup({ reference, phoneLast4 }) {
 
   return errors;
 }
+
+// "My order is missing" form. Mirrors the API: a reference or the last four
+// phone digits (never the whole number), and a message of 5 to 500 characters.
+export function validateMissingOrder({ reference, phoneLast4, message }) {
+  const ref = reference.trim().toUpperCase();
+  const errors = {};
+
+  if (ref && !ORDER_REF_PATTERN.test(ref)) {
+    errors.reference =
+      "Order references start with CL- followed by 5 letters or numbers, e.g. CL-7KQ2M.";
+  }
+
+  if (phoneLast4 && !/^\d{4}$/.test(phoneLast4)) {
+    errors.phoneLast4 = `Enter exactly 4 digits. You entered ${phoneLast4.length}.`;
+  }
+
+  if (!ref && !phoneLast4) {
+    errors.reference =
+      "Enter your order reference or the last 4 digits of your phone number.";
+  }
+
+  const text = message.trim();
+  if (text.length < 5) {
+    errors.message = "Please say a little more (at least 5 characters).";
+  } else if (text.length > 500) {
+    errors.message = `Keep it to 500 characters or fewer. It is currently ${text.length}.`;
+  }
+
+  return errors;
+}

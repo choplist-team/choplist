@@ -96,6 +96,11 @@ export const router = createBrowserRouter([
         lazy: lazyPage(() => import("../pages/customer/OrderLookup.jsx")),
       },
 
+      {
+        path: "order-lookup/missing",
+        lazy: lazyPage(() => import("../pages/customer/ReportMissingOrder.jsx")),
+      },
+
       // Admin sign-in (public). There is no admin sign-up: admins are the
       // accounts listed in the API's ADMIN_CLERK_USER_IDS.
       {

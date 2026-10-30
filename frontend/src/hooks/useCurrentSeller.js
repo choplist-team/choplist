@@ -10,6 +10,7 @@ export const useCurrentSeller = (options = {}) => {
     enabled: isLoaded && isSignedIn && (options.enabled ?? true),
     retry: (failureCount, error) => {
       if (error?.code === "PROFILE_REQUIRED") return false;
+      if (error?.code === "ACCOUNT_SUSPENDED") return false;
       return failureCount < 3;
     },
   });
