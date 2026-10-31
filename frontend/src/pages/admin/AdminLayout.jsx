@@ -24,7 +24,7 @@ function ChoplistBrand() {
     <div className="flex min-w-0 flex-col gap-1">
       <ChopListLogo />
 
-      <span className="pl-9 text-xs font-medium text-muted-foreground">
+      <span className="pl-9 mt-2 text-xs font-medium text-muted-foreground">
         Admin workspace
       </span>
     </div>
