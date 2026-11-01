@@ -31,6 +31,8 @@ export type AppOptions = {
   paystack?: PaystackClient | null;
   // FREE_ORDERS and PLATFORM_FEE_BPS from the config.
   pricing?: { freeOrders: number; platformFeeBps: number };
+  // Where Paystack sends the customer after paying (PAYSTACK_CALLBACK_URL).
+  paystackCallbackUrl?: string;
 };
 
 // Builds the app without listening on a port or connecting to a database,
@@ -73,7 +75,15 @@ export function createApp(options: AppOptions): Express {
   );
   app.use('/api/menus', createMenuRouter(options.auth));
   app.use('/api/orders', createOrderRouter(options.auth));
-  app.use('/api/public', createPublicRouter(options.rateLimits ?? DEFAULT_RATE_LIMITS));
+  const pricing = options.pricing ?? { freeOrders: DEFAULT_FREE_ORDERS, platformFeeBps: DEFAULT_PLATFORM_FEE_BPS };
+  app.use(
+    '/api/public',
+    createPublicRouter(options.rateLimits ?? DEFAULT_RATE_LIMITS, {
+      paystack: options.paystack ?? null,
+      pricing,
+      callbackUrl: options.paystackCallbackUrl,
+    }),
+  );
 
   app.use(notFound);
   app.use(errorHandler);

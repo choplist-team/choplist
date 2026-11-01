@@ -35,12 +35,29 @@ export type SubaccountInput = {
   accountNumber: string;
 };
 
+export type InitializeInput = {
+  email: string;
+  amountKobo: number;
+  reference: string;
+  subaccountCode: string;
+  // ChopList's cut, in kobo. 0 is left out of the request: Paystack treats an
+  // absent value as "use the subaccount's default", which we set to 0%, so both
+  // mean the same thing.
+  transactionChargeKobo: number;
+  // Who Paystack takes its own fee from: 'account' (ChopList) or 'subaccount' (the seller).
+  bearer: 'account' | 'subaccount';
+  callbackUrl?: string;
+  metadata: Record<string, string>;
+};
+
 export interface PaystackClient {
   listBanks(): Promise<PaystackBank[]>;
   // Looks the account up at the bank; returns the name the bank has on file.
   resolveAccount(input: { bankCode: string; accountNumber: string }): Promise<{ accountName: string }>;
   createSubaccount(input: SubaccountInput): Promise<{ subaccountCode: string }>;
   updateSubaccount(code: string, input: SubaccountInput): Promise<void>;
+  // Starts a payment; the customer is sent to authorizationUrl to pay.
+  initializeTransaction(input: InitializeInput): Promise<{ authorizationUrl: string }>;
 }
 
 const BASE_URL = 'https://api.paystack.co';
@@ -134,7 +151,36 @@ export function createPaystackClient(secretKey: string, fetchImpl: FetchLike = f
     async updateSubaccount(code, input) {
       await call('PUT', `/subaccount/${encodeURIComponent(code)}`, subaccountBody(input));
     },
+
+    async initializeTransaction(input) {
+      const envelope = await call('POST', '/transaction/initialize', {
+        email: input.email,
+        amount: input.amountKobo,
+        currency: 'NGN',
+        reference: input.reference,
+        subaccount: input.subaccountCode,
+        ...(input.transactionChargeKobo > 0 ? { transaction_charge: input.transactionChargeKobo } : {}),
+        bearer: input.bearer,
+        ...(input.callbackUrl ? { callback_url: input.callbackUrl } : {}),
+        metadata: input.metadata,
+      });
+      const url = isRecord(envelope.data) ? envelope.data.authorization_url : undefined;
+      if (typeof url !== 'string' || !isPaystackPaymentUrl(url)) {
+        // We send this address to a customer's browser, so only a Paystack page will do.
+        throw new PaystackError('unavailable', 'Paystack sent an unexpected payment page address');
+      }
+      return { authorizationUrl: url };
+    },
   };
+}
+
+function isPaystackPaymentUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && (url.hostname === 'paystack.com' || url.hostname.endsWith('.paystack.com'));
+  } catch {
+    return false;
+  }
 }
 
 // percentage_charge is Paystack's DEFAULT cut for the platform on this

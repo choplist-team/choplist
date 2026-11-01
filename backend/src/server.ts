@@ -28,6 +28,7 @@ const app = createApp({
   // No key = payments off; the API still runs on bank transfer.
   paystack: config.PAYSTACK_SECRET_KEY ? createPaystackClient(config.PAYSTACK_SECRET_KEY) : null,
   pricing: { freeOrders: config.FREE_ORDERS, platformFeeBps: config.PLATFORM_FEE_BPS },
+  paystackCallbackUrl: config.PAYSTACK_CALLBACK_URL,
   auth: createClerkAuth({
     secretKey: config.CLERK_SECRET_KEY,
     publishableKey: config.CLERK_PUBLISHABLE_KEY,

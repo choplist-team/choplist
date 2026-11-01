@@ -91,6 +91,72 @@ describe('createPaystackClient', () => {
     expect(fetchFn.mock.calls.length).toBeLessThanOrEqual(10);
   });
 
+  describe('initializeTransaction', () => {
+    const input = {
+      email: 'cl-7kq2m@orders.choplistafrica.com',
+      amountKobo: 771_600,
+      reference: 'CLP-abc123',
+      subaccountCode: 'ACCT_seller1',
+      transactionChargeKobo: 21_600,
+      bearer: 'account' as const,
+      callbackUrl: 'https://choplistafrica.com/pay/done',
+      metadata: { orderRef: 'CL-7KQ2M' },
+    };
+    const ok = (url = 'https://checkout.paystack.com/abc') => reply(200, { status: true, data: { authorization_url: url, access_code: 'x', reference: 'CLP-abc123' } });
+
+    it('sends the amount, split, bearer and reference in the shapes Paystack documents', async () => {
+      const fetchFn = mockFetch(ok());
+      await expect(createPaystackClient(KEY, fetchFn).initializeTransaction(input)).resolves.toEqual({ authorizationUrl: 'https://checkout.paystack.com/abc' });
+      const { url, init } = sent(fetchFn);
+      expect(url).toBe('https://api.paystack.co/transaction/initialize');
+      expect(init.method).toBe('POST');
+      expect(JSON.parse(String(init.body))).toEqual({
+        email: 'cl-7kq2m@orders.choplistafrica.com',
+        amount: 771_600,
+        currency: 'NGN',
+        reference: 'CLP-abc123',
+        subaccount: 'ACCT_seller1',
+        transaction_charge: 21_600,
+        bearer: 'account',
+        callback_url: 'https://choplistafrica.com/pay/done',
+        metadata: { orderRef: 'CL-7KQ2M' },
+      });
+      expect(String(init.body)).not.toContain(KEY);
+    });
+
+    it('leaves transaction_charge out when it is 0, and callback_url out when there is none', async () => {
+      const fetchFn = mockFetch(ok());
+      await createPaystackClient(KEY, fetchFn).initializeTransaction({ ...input, transactionChargeKobo: 0, callbackUrl: undefined, bearer: 'subaccount' });
+      const body = JSON.parse(String(sent(fetchFn).init.body));
+      expect(body).not.toHaveProperty('transaction_charge');
+      expect(body).not.toHaveProperty('callback_url');
+      expect(body.bearer).toBe('subaccount');
+    });
+
+    it.each([
+      ['http://checkout.paystack.com/abc'],
+      ['https://evil.example.com/checkout.paystack.com'],
+      ['https://paystack.com.evil.example/abc'],
+      ['https://notpaystack.com/abc'],
+      ['javascript:alert(1)'],
+      ['not a url'],
+      [''],
+    ])('refuses a payment page address that is not https on paystack.com: %s', async (bad) => {
+      const fetchFn = mockFetch(ok(bad));
+      expect((await failure(createPaystackClient(KEY, fetchFn).initializeTransaction(input))).kind).toBe('unavailable');
+    });
+
+    it('accepts a paystack.com subdomain', async () => {
+      const fetchFn = mockFetch(ok('https://checkout.paystack.com/x1'));
+      await expect(createPaystackClient(KEY, fetchFn).initializeTransaction(input)).resolves.toBeTruthy();
+    });
+
+    it('a missing address is "unavailable"', async () => {
+      const fetchFn = mockFetch(reply(200, { status: true, data: {} }));
+      expect((await failure(createPaystackClient(KEY, fetchFn).initializeTransaction(input))).kind).toBe('unavailable');
+    });
+  });
+
   describe('failures', () => {
     it('a 400 with status:false is "rejected" and carries Paystack\'s own message', async () => {
       const fetchFn = mockFetch(reply(422, { status: false, message: 'Could not resolve account name' }));

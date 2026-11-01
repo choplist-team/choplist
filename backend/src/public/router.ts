@@ -3,12 +3,13 @@ import { Types } from 'mongoose';
 import { ZodError } from 'zod';
 import { AppError } from '../errors.js';
 import { MenuModel, type MenuDoc } from '../models/menu.js';
-import { OrderModel, type OrderDoc } from '../models/order.js';
+import { OrderModel, REF_PATTERN, type OrderDoc } from '../models/order.js';
 import { SellerModel, isSellerActive, type SellerDoc } from '../models/seller.js';
 import { recordMenuView } from '../analytics/record-view.js';
 import { logEvent } from '../events/log.js';
 import { accessKeyMatches, generateAccessKey } from '../orders/delivery-code.js';
 import { placeOrder } from '../orders/place-order.js';
+import { startPayment, type PayOptions } from '../payments/pay.js';
 import { missingOrderBody, submitMissingOrderReport } from '../support/missing-order.js';
 import { createRateLimiters, type RateLimitSettings } from '../middleware/rate-limit.js';
 import { lookupSchema, placeOrderSchema } from './schema.js';
@@ -121,7 +122,7 @@ async function recordFailedOrder(err: unknown, body: unknown): Promise<void> {
   });
 }
 
-export function createPublicRouter(rateLimits: RateLimitSettings): Router {
+export function createPublicRouter(rateLimits: RateLimitSettings, pay: PayOptions = { paystack: null, pricing: { freeOrders: 0, platformFeeBps: 0 } }): Router {
   const router = Router();
   const limit = createRateLimiters(rateLimits);
 
@@ -191,6 +192,26 @@ export function createPublicRouter(rateLimits: RateLimitSettings): Router {
       seller: toPublicSeller(seller),
       accessKey,
     });
+  });
+
+  // Start paying an order online. Needs the order's access key (the X-Order-Key
+  // header the customer's browser got when it placed the order): the ref and
+  // phone digits are also known to the seller, so they are not enough to pay or
+  // to learn the amount. A wrong ref and a wrong key give the same 404.
+  // Returns where to send the customer; the order is marked paid only by the
+  // Paystack webhook, never by this route.
+  router.post('/orders/:ref/pay', limit.payments, async (req, res) => {
+    const ref = String(req.params.ref ?? '').trim().toUpperCase();
+    const notFound = new AppError(404, 'ORDER_NOT_FOUND', 'No order matches that reference and key');
+    if (!REF_PATTERN.test(ref)) throw notFound;
+
+    const order = await OrderModel.findOne({ ref }).select('+accessKeyHash');
+    if (!order || !accessKeyMatches(req.get('x-order-key'), order.accessKeyHash)) throw notFound;
+
+    const seller = await SellerModel.findById(order.sellerId);
+    if (!seller) throw new Error(`Seller ${order.sellerId.toString()} missing for order ${order.ref}`);
+
+    res.json(await startPayment(order, seller, pay));
   });
 
   // Track an order. Needs the ref AND the last 4 digits of the phone used.

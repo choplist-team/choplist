@@ -6,21 +6,7 @@ import { SellerModel } from '../src/models/seller.js';
 import { PaystackError, type PaystackClient } from '../src/payments/paystack.js';
 import { connectTestDb, disconnectTestDb, testDbUri } from './helpers/db.js';
 import { bearer, fakeAuth } from './helpers/fake-auth.js';
-
-// A Paystack stand-in that records every call. Nothing here touches the network.
-function fakePaystack() {
-  let counter = 0;
-  const client = {
-    listBanks: vi.fn<PaystackClient['listBanks']>(async () => [
-      { name: 'GTBank', code: '058' },
-      { name: 'Access Bank', code: '044' },
-    ]),
-    resolveAccount: vi.fn<PaystackClient['resolveAccount']>(async () => ({ accountName: 'TITILAYO ADEBAYO' })),
-    createSubaccount: vi.fn<PaystackClient['createSubaccount']>(async () => ({ subaccountCode: `ACCT_test${(counter += 1)}` })),
-    updateSubaccount: vi.fn<PaystackClient['updateSubaccount']>(async () => undefined),
-  };
-  return client;
-}
+import { fakePaystack } from './helpers/fake-paystack.js';
 
 const unavailable = () => new PaystackError('unavailable', 'Could not reach Paystack');
 const rejected = (message: string) => new PaystackError('rejected', message, 422);
