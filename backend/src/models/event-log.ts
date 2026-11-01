@@ -8,6 +8,7 @@ export const EVENT_TYPES = [
   'server_error', // an unhandled 5xx
   'notification_failed', // a push/email did not go out (nothing produces this yet)
   'missing_order_report', // a customer says their order is missing
+  'payment_setup_failed', // a seller's Paystack payout account could not be set up
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 

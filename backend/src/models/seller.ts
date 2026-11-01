@@ -41,6 +41,10 @@ const paymentSchema = new Schema(
     bankName: { type: String, required: true, trim: true, maxlength: 60 },
     accountNumber: { type: String, required: true, match: /^\d{10}$/ }, // NUBAN
     accountName: { type: String, required: true, trim: true, maxlength: 80 },
+    // Paystack's code for the bank ("058"), chosen from the bank list. Needed to
+    // pay the seller through Paystack; sellers from before it have none and stay
+    // on bank transfer until they pick their bank.
+    bankCode: { type: String, match: /^\d{2,6}$/ },
   },
   { _id: false },
 );
