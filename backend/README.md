@@ -227,8 +227,11 @@ Be upfront about these when presenting.
   hotspot) shows a different key. Many keys means the number is too low; a key that
   follows the faked header means it is too high.
 - Environment (dashboard): `MONGO_URI`, `CLERK_SECRET_KEY`, `CLERK_PUBLISHABLE_KEY`,
-  `ALLOWED_ORIGINS=https://choplist.onrender.com` (add `http://localhost:5173` if
-  local frontends should work), and a Node version of 20.19 or newer.
+  `ALLOWED_ORIGINS` (every frontend origin, comma separated; during the move to
+  choplistafrica.com that is
+  `https://choplistafrica.com,https://www.choplistafrica.com,https://choplist.onrender.com`,
+  plus `http://localhost:5173` if local frontends should work), and a Node version
+  of 20.19 or newer. The step-by-step move is in `docs/new-domain-checklist.md`.
 - Health check path `/health`. It does not touch the database, so UptimeRobot can
   ping it every few minutes to keep the free instance awake.
 - Render's free tier has no fixed outbound IP, so Atlas Network Access needs

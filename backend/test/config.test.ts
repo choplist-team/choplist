@@ -43,6 +43,16 @@ describe('parseEnv', () => {
     expect(() => parseEnv({ ...valid, ALLOWED_ORIGINS: 'choplist frontend' })).toThrow(/is not an origin/);
   });
 
+  it('accepts the new domain next to the old one, with or without spaces after the commas', () => {
+    const list = ['https://choplistafrica.com', 'https://www.choplistafrica.com', 'https://choplist.onrender.com'];
+    expect(parseEnv({ ...valid, ALLOWED_ORIGINS: list.join(',') }).ALLOWED_ORIGINS).toEqual(list);
+    expect(parseEnv({ ...valid, ALLOWED_ORIGINS: list.join(' , ') }).ALLOWED_ORIGINS).toEqual(list);
+  });
+
+  it('rejects a capitalised host, which a browser would never send (so it could never match)', () => {
+    expect(() => parseEnv({ ...valid, ALLOWED_ORIGINS: 'https://ChopListAfrica.com' })).toThrow(/is not an origin/);
+  });
+
   it('rejects an empty ALLOWED_ORIGINS list', () => {
     expect(() => parseEnv({ ...valid, ALLOWED_ORIGINS: ' , ' })).toThrow(/at least one origin/);
   });

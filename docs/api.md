@@ -25,7 +25,10 @@ JSON body (no empty 204s), so `response.json()` is always safe to call.
   the leading `0` and is rejected.
 - **Ids** are 24-character strings, e.g. `6710b2d3e4b0a1b2c3d4e5f7`.
 - **CORS:** only the origins listed in the server's `ALLOWED_ORIGINS` can call the
-  API from a browser. Requests may carry `Authorization` and `Content-Type`.
+  API from a browser. Requests may carry `Authorization`, `X-Order-Key` and
+  `Content-Type`. An origin is the exact scheme, host and port, so
+  `https://choplistafrica.com` and `https://www.choplistafrica.com` are separate
+  entries. The same list decides which sites sign-in tokens are accepted from.
 - **Bodies** over 20 KB are refused (`PAYLOAD_TOO_LARGE`).
 
 ## Errors
