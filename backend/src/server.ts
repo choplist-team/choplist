@@ -29,6 +29,7 @@ const app = createApp({
   paystack: config.PAYSTACK_SECRET_KEY ? createPaystackClient(config.PAYSTACK_SECRET_KEY) : null,
   pricing: { freeOrders: config.FREE_ORDERS, platformFeeBps: config.PLATFORM_FEE_BPS },
   paystackCallbackUrl: config.PAYSTACK_CALLBACK_URL,
+  paystackSecretKey: config.PAYSTACK_SECRET_KEY,
   auth: createClerkAuth({
     secretKey: config.CLERK_SECRET_KEY,
     publishableKey: config.CLERK_PUBLISHABLE_KEY,

@@ -127,6 +127,8 @@ export async function startPayment(order: OrderDoc, seller: SellerDoc, options: 
     transactionChargeKobo: quote.transactionChargeKobo,
     platformFeeKobo: quote.platformFeeKobo,
     paystackFeeKobo: quote.paystackFeeKobo,
+    platformFeeBps: quote.platformFeeBps,
+    serviceFee: quote.serviceFee,
     bearer: quote.bearer,
     subaccountCode: seller.paystackSubaccountCode,
   });

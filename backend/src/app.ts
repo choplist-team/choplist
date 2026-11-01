@@ -9,12 +9,15 @@ import { createMenuRouter } from './menus/router.js';
 import { DEFAULT_FREE_ORDERS, DEFAULT_PLATFORM_FEE_BPS } from './config.js';
 import { createOrderRouter } from './orders/router.js';
 import type { PaystackClient } from './payments/paystack.js';
+import { createWebhookHandler } from './payments/webhook.js';
 import { createPublicRouter } from './public/router.js';
 import { createSellerRouter } from './sellers/router.js';
 
 // The biggest legitimate body is a seller's menu with a few dozen items
 // (a few KB). Anything far larger is a mistake or abuse.
 const JSON_BODY_LIMIT = '20kb';
+// A Paystack event is a few KB; this is generous without letting anyone stream megabytes at us.
+const WEBHOOK_BODY_LIMIT = '100kb';
 
 export type AppOptions = {
   allowedOrigins: string[];
@@ -31,6 +34,8 @@ export type AppOptions = {
   paystack?: PaystackClient | null;
   // FREE_ORDERS and PLATFORM_FEE_BPS from the config.
   pricing?: { freeOrders: number; platformFeeBps: number };
+  // PAYSTACK_SECRET_KEY, used only to check the signature on Paystack's webhooks.
+  paystackSecretKey?: string;
   // Where Paystack sends the customer after paying (PAYSTACK_CALLBACK_URL).
   paystackCallbackUrl?: string;
 };
@@ -56,6 +61,15 @@ export function createApp(options: AppOptions): Express {
   // Only our frontend origins may read responses in a browser. Auth uses a
   // bearer header, not cookies, so credentials mode is not needed.
   app.use(cors({ origin: options.allowedOrigins }));
+
+  // Paystack's webhook. It must come BEFORE express.json and read the body as raw
+  // bytes: the signature is over those exact bytes, and a parsed-then-reserialised
+  // body can differ by a character. Only this route gets the raw parser.
+  app.post(
+    '/api/webhooks/paystack',
+    express.raw({ type: () => true, limit: WEBHOOK_BODY_LIMIT }),
+    createWebhookHandler({ secretKey: options.paystackSecretKey ?? null, paystack: options.paystack ?? null }),
+  );
 
   app.use(express.json({ limit: JSON_BODY_LIMIT }));
 

@@ -182,6 +182,8 @@ describe.skipIf(!testDbUri)('POST /api/public/orders/:ref/pay on a real MongoDB'
         amountKobo: 794_500,
         transactionChargeKobo: 44_500,
         platformFeeKobo: 22_500,
+        platformFeeBps: 300,
+        serviceFee: 445,
         bearer: 'account',
         currency: 'NGN',
       });
