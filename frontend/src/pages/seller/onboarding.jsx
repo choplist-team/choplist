@@ -7,6 +7,7 @@ import { useCurrentSeller } from "@/hooks/useCurrentSeller";
 import { useSaveSellerProfile } from "@/hooks/useSaveSellerProfile";
 import { FieldError } from "@/components/field-error";
 import { hasErrors, validateProfile } from "@/lib/validation";
+import SuspendedAccount from "@/components/seller/SuspendedAccount";
 
 export default function SellerOnboarding() {
   const { isLoaded, isSignedIn } = useAuth();
@@ -115,6 +116,14 @@ export default function SellerOnboarding() {
     }
   }
 
+  // Every seller page is behind this, so this is the one place that turns a
+  // suspended account into the "not active" screen. The query only runs once
+  // the user is signed in, and is shared with the pages that read the seller.
+
+  if (profileError?.code === "ACCOUNT_SUSPENDED") {
+    return <SuspendedAccount />;
+  }
+
   if (profileError && !needsOnboarding) {
     return (
       <main className="min-h-[100dvh] bg-background px-4 py-10 md:py-14">
@@ -150,9 +159,12 @@ export default function SellerOnboarding() {
         <div className="flex items-center justify-between gap-3">
           <ChopListLogo />
 
-          <Link to="/seller/dashboard" className="text-sm font-semibold hover:underline">
-          SKIP</Link>
-
+          <Link
+            to="/seller/dashboard"
+            className="text-sm font-semibold hover:underline"
+          >
+            SKIP
+          </Link>
         </div>
 
         <div className="mt-8">
@@ -166,8 +178,8 @@ export default function SellerOnboarding() {
             Set up your shop
           </h1>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            Your business and payment details are required before you can
-            create menus and receive orders.
+            Your business and payment details are required before you can create
+            menus and receive orders.
           </p>
         </div>
 
@@ -191,7 +203,9 @@ export default function SellerOnboarding() {
                 onChange={handleChange}
                 required
                 aria-invalid={Boolean(fieldErrors.businessName)}
-                aria-describedby={fieldErrors.businessName ? "businessName-error" : undefined}
+                aria-describedby={
+                  fieldErrors.businessName ? "businessName-error" : undefined
+                }
                 className="w-full rounded-lg border border-border bg-background px-3 py-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-primary"
               />
 
@@ -223,10 +237,7 @@ export default function SellerOnboarding() {
                 className="w-full rounded-lg border border-border bg-background px-3 py-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-primary"
               />
 
-              <FieldError
-                id="phone-error"
-                message={fieldErrors.phone}
-              />
+              <FieldError id="phone-error" message={fieldErrors.phone} />
             </div>
           </div>
 
@@ -253,14 +264,13 @@ export default function SellerOnboarding() {
                 onChange={handleChange}
                 required
                 aria-invalid={Boolean(fieldErrors.bankName)}
-                aria-describedby={fieldErrors.bankName ? "bankName-error" : undefined}
+                aria-describedby={
+                  fieldErrors.bankName ? "bankName-error" : undefined
+                }
                 className="w-full rounded-lg border border-border bg-background px-3 py-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-primary"
               />
 
-              <FieldError
-                id="bankName-error"
-                message={fieldErrors.bankName}
-              />
+              <FieldError id="bankName-error" message={fieldErrors.bankName} />
             </div>
 
             <div className="space-y-2">
@@ -284,7 +294,9 @@ export default function SellerOnboarding() {
                 onChange={handleChange}
                 required
                 aria-invalid={Boolean(fieldErrors.accountNumber)}
-                aria-describedby={fieldErrors.accountNumber ? "accountNumber-error" : undefined}
+                aria-describedby={
+                  fieldErrors.accountNumber ? "accountNumber-error" : undefined
+                }
                 className="w-full rounded-lg border border-border bg-background px-3 py-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-primary"
               />
 
@@ -312,7 +324,9 @@ export default function SellerOnboarding() {
                 onChange={handleChange}
                 required
                 aria-invalid={Boolean(fieldErrors.accountName)}
-                aria-describedby={fieldErrors.accountName ? "accountName-error" : undefined}
+                aria-describedby={
+                  fieldErrors.accountName ? "accountName-error" : undefined
+                }
                 className="w-full rounded-lg border border-border bg-background px-3 py-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-primary"
               />
 
@@ -351,10 +365,7 @@ export default function SellerOnboarding() {
               Leave this blank and we'll create one from your business name.
             </p>
 
-            <FieldError
-              id="slug-error"
-              message={fieldErrors.slug}
-            />
+            <FieldError id="slug-error" message={fieldErrors.slug} />
           </div>
 
           {validationError && (
