@@ -6,7 +6,9 @@ before or alongside the code, so frontend can build against it.
 Base path: /api (the one exception is `GET /health`, which is at the root).
 
 Building the frontend? [frontend-guide.md](frontend-guide.md) shows how to call these
-routes from React (a fixed API client, the customer order flow, Clerk sign-in).
+routes from React (a fixed API client, the customer order flow, Clerk sign-in). Online
+payments (Paystack) are not in that guide yet: see "Online payments" and "For the
+frontend team" below. Setting Paystack up and testing it: [paystack-setup.md](paystack-setup.md).
 
 All request and response bodies are JSON. Successful responses always have a
 JSON body (no empty 204s), so `response.json()` is always safe to call.
@@ -14,7 +16,10 @@ JSON body (no empty 204s), so `response.json()` is always safe to call.
 ## Conventions
 
 - **Money** is whole naira, as integers: `3500` means ₦3,500. There are no kobo
-  and no decimals anywhere.
+  and no decimals in any request or in any seller or customer response. The one
+  exception is ChopList's own `revenue` on the admin overview, which can have two
+  decimals (a 3% fee on ₦1,111 is ₦33.33). Kobo (1/100 naira) exists only inside
+  the server and in its calls to Paystack.
 - **Timestamps** (`cutoffAt`, `createdAt`, `paidAt`, ...) are UTC instants in ISO
   format, e.g. `2026-10-16T17:00:00.000Z`. Show them in Africa/Lagos on the client.
   When *sending* one (`cutoffAt`), include a time zone: `...Z` or `...+01:00`.
@@ -51,13 +56,14 @@ Every error, on every route, has this shape:
 | 400 | `INVALID_AREA` | Delivery area is not one the menu lists (the message lists them) |
 | 400 | `INVALID_DELIVERY_DAY` | Delivery day is not one the menu lists (the message lists them) |
 | 401 | `UNAUTHENTICATED` | No valid Clerk token on a seller route |
+| 401 | `INVALID_SIGNATURE` | `POST /api/webhooks/paystack` only: the signature is missing or wrong. Nothing was read or changed |
 | 403 | `FORBIDDEN` | Signed in, but not an administrator, on an `/api/admin` route |
 | 403 | `ACCOUNT_SUSPENDED` | The seller's account was suspended or deactivated by an admin; every seller route refuses until it is reinstated. Show the message and a support contact |
 | 403 | `PROFILE_REQUIRED` | Signed in, but no seller profile yet: show onboarding, then `PUT /api/sellers/me` |
 | 404 | `NOT_FOUND` | No route matches the method and path |
 | 404 | `MENU_NOT_FOUND` | No such menu for this seller (also for another seller's menu, and malformed ids) |
 | 404 | `SELLER_NOT_FOUND` | No seller has this public link |
-| 404 | `ORDER_NOT_FOUND` | No order matches that reference and phone digits (same error for both) |
+| 404 | `ORDER_NOT_FOUND` | No order matches that reference and phone digits (same error for both). On `/pay` and `/payment-status`: no order matches that reference and `X-Order-Key` (a wrong key, a missing key and an unknown reference all look the same) |
 | 404 | `REPORT_NOT_FOUND` | No "my order is missing" report has that id (admin) |
 | 409 | `SLUG_TAKEN` | The chosen link is used by another seller |
 | 409 | `MENU_NOT_DRAFT` | Editing a menu that is open or closed |
@@ -67,7 +73,9 @@ Every error, on every route, has this shape:
 | 409 | `CUTOFF_PASSED` | Opening a draft whose cut-off is in the past (edit it first) |
 | 409 | `ORDERING_CLOSED` | The menu is closed, not yet open, or past its cut-off |
 | 409 | `SOLD_OUT` | Not enough stock for at least one item; nothing was taken. The message names it, e.g. `Not enough left: only 2 Jollof rice left` |
-| 409 | `ORDER_CANCELLED` | Paying, sending out or confirming a cancelled order |
+| 409 | `ORDER_CANCELLED` | Paying (by hand or online), sending out or confirming a cancelled order |
+| 409 | `ORDER_ALREADY_PAID` | Starting an online payment for an order that is already paid (or further along) |
+| 409 | `PAYMENTS_NOT_READY` | Starting an online payment for a seller who does not take them yet (not set up, suspended or deactivated). The message tells the customer to use bank transfer. Offer transfer instead |
 | 409 | `ORDER_NOT_PAID` | Sending an order out for delivery before it is paid |
 | 409 | `ORDER_DELIVERED` | Cancelling or sending out an order that is already delivered |
 | 409 | `ORDER_NOT_OUT_FOR_DELIVERY` | Confirming or resetting the code of an order that is not out for delivery |
@@ -77,6 +85,7 @@ Every error, on every route, has this shape:
 | 413 | `PAYLOAD_TOO_LARGE` | Request body is over 20 KB |
 | 429 | `RATE_LIMITED` | Too many orders or lookups from one network; wait (see the `RateLimit` header) |
 | 500 | `INTERNAL_ERROR` | Server bug or outage; details are logged, never returned |
+| 503 | `PAYMENTS_UNAVAILABLE` | Online payment cannot be used right now: the server has no Paystack key, or Paystack could not be reached. The message tells the customer to pay by bank transfer. Also the bank list when it cannot be loaded. Safe to retry |
 
 Every code the API can return is in this table. A route's own "Errors" line lists
 the ones that route can produce; any route can also return `INVALID_JSON`,
@@ -143,8 +152,12 @@ Response `200`:
   "payment": {
     "bankName": "GTBank",
     "accountNumber": "0123456789",
-    "accountName": "Titilayo Adebayo"
+    "accountName": "Titilayo Adebayo",
+    "bankCode": "058"
   },
+  "feeMode": "customer",
+  "paymentsReady": true,
+  "paymentsIssue": null,
   "createdAt": "2026-10-09T20:15:00.000Z",
   "updatedAt": "2026-10-09T20:15:00.000Z"
 }
@@ -152,6 +165,16 @@ Response `200`:
 
 `email` is `null` when the seller gave none. `status` is `active` (the only value a
 seller can see in a normal response; the others are described below).
+
+The payment fields are new (see [Online payments](#online-payments-paystack)):
+
+- `payment.bankCode` is Paystack's code for the bank (`"058"`), or `null` for a
+  seller who has not picked their bank from the list yet.
+- `feeMode` is `"customer"` or `"seller"`: who pays the card fees.
+- `paymentsReady` is `true` when customers can pay this seller online. When it is
+  `false`, `paymentsIssue` says why (see the table under
+  [Seller payments](#seller-payments)); when it is `true`, `paymentsIssue` is `null`.
+- Nothing Paystack-internal (the seller's payout-account code) is ever returned.
 
 Errors: `401 UNAUTHENTICATED`, `403 PROFILE_REQUIRED` (no profile yet),
 `403 ACCOUNT_SUSPENDED`.
@@ -168,6 +191,19 @@ only `slug` is optional.
 - `phone` accepts `0803 123 4567`, `+234 803 123 4567` or `2348031234567` and is
   stored as `+2348031234567`.
 - `payment.accountNumber` is exactly 10 digits (NUBAN), as a string.
+- `payment.bankCode` is optional: 2 to 6 digits, **taken from `GET /api/sellers/banks`**
+  (never typed by hand). It is what lets Paystack pay the seller directly. If it is
+  left out, the stored one is **kept** while `bankName` and `accountNumber` are
+  unchanged, and **cleared** if either changed (an old code would point at the wrong
+  bank). Without a bank code the profile saves normally and the seller stays on bank
+  transfer (`paymentsIssue: "NO_BANK_CODE"`).
+- Saving also sets up the seller's Paystack payout account when needed. This can
+  take a few seconds (up to two calls to Paystack), so show a spinner. If Paystack
+  fails, **the profile still saves** and the response says `paymentsReady: false`
+  with a `paymentsIssue`; saving again, or `POST /api/sellers/me/payments/retry`,
+  tries again. Changing the bank or account number switches online payments **off**
+  until the new account is confirmed, so money never goes to the old account.
+- `feeMode` and `paidOrderCount` cannot be set here (they are ignored).
 - `email` is optional: a valid address (stored lower-case). Leave it out to keep
   the current one; send `""` to remove it. Admins see it next to the phone.
 
@@ -186,7 +222,8 @@ Content-Type: application/json
   "payment": {
     "bankName": "GTBank",
     "accountNumber": "0123456789",
-    "accountName": "Titilayo Adebayo"
+    "accountName": "Titilayo Adebayo",
+    "bankCode": "058"
   }
 }
 ```
@@ -195,6 +232,74 @@ Response `201` (profile created) or `200` (profile updated), same body as
 `GET /api/sellers/me`.
 
 Errors: `400 VALIDATION_ERROR`, `401 UNAUTHENTICATED`, `409 SLUG_TAKEN`.
+
+### Seller payments
+
+Online payments are set up from the profile above; these routes cover the rest. All
+need `Authorization: Bearer <token>`. A suspended or deactivated seller gets
+`403 ACCOUNT_SUSPENDED` from the three that need a profile.
+
+**`GET /api/sellers/banks`**: the banks to choose from. Needs sign-in but **not** a
+profile, because onboarding picks the bank first. Cached by the server for 6 hours.
+
+```json
+{ "banks": [ { "name": "Access Bank", "code": "044" }, { "name": "GTBank", "code": "058" } ] }
+```
+
+Errors: `401 UNAUTHENTICATED`, `503 PAYMENTS_UNAVAILABLE` (payments are off, or the
+list cannot be loaded and none is saved). If it is unavailable, let the seller finish
+onboarding without a bank code.
+
+**`GET /api/sellers/me/payments`**: where this seller stands.
+
+```json
+{
+  "paymentsReady": true,
+  "paymentsIssue": null,
+  "feeMode": "customer",
+  "paidOrderCount": 49,
+  "freeOrders": 50,
+  "freeOrdersRemaining": 1,
+  "tier": "free",
+  "platformFeeBps": 300
+}
+```
+
+- `paidOrderCount` counts orders paid **through Paystack** (not bank transfers).
+- `freeOrdersRemaining` is how many are left before ChopList's fee starts.
+  `tier` is what the **next** payment will be charged under: `"free"` or `"standard"`.
+- `platformFeeBps` is ChopList's fee in basis points (`300` = 3%), charged on the
+  order amount once the free orders are used.
+
+**`PUT /api/sellers/me/fee-mode`**: who pays the card fees from now on.
+
+```json
+{ "feeMode": "seller" }
+```
+
+Response `200`: same body as `GET /api/sellers/me/payments`. `feeMode` is `"customer"`
+(a service fee is added to the customer's total, the seller receives the full order
+amount) or `"seller"` (the customer pays only the order amount; ChopList's fee and
+Paystack's charge come out of what the seller receives). Orders whose payment was
+already started keep the fee they were quoted. This is a **seller setting**: the
+customer is never asked to choose. Errors: `400 VALIDATION_ERROR`.
+
+**`POST /api/sellers/me/payments/retry`**: tries the Paystack setup again without
+re-saving the profile (for example after Paystack was down). No body. Response `200`:
+same body as `GET /api/sellers/me/payments`, with `paymentsIssue` set if it failed
+again. A failed retry never switches off payments that already work.
+
+`paymentsIssue` is one of:
+
+| `paymentsIssue` | Meaning | What to show |
+| --------------- | ------- | ------------ |
+| `null` | Ready | Online payments are on |
+| `NO_BANK_CODE` | The seller has not picked their bank from the list | Ask them to choose their bank |
+| `ACCOUNT_NOT_FOUND` | Paystack could not find that account at that bank | Ask them to check the bank and account number |
+| `SETUP_REJECTED` | Paystack refused to create the payout account | Ask them to check their details; contact support if it repeats |
+| `PAYSTACK_UNAVAILABLE` | Paystack (or ChopList's connection to it) failed; not the seller's fault | "Try again in a few minutes", with a retry button |
+| `NOT_CONFIGURED` | ChopList has online payments switched off | Nothing to do; bank transfer only |
+| `NOT_SET_UP` | Not set up yet and nothing has failed (for example an old profile) | Offer to retry |
 
 ## Suspended and deactivated sellers
 
@@ -240,8 +345,12 @@ every reveal is written to an audit trail (who, which order, when) that admins c
 read at `GET /api/admin/audit`. Delivery codes
 and order access keys are never returned by any admin endpoint.
 
-**Payment status** (`paid`, `pending`) is **confirmed by the seller** after they see
-the bank transfer. ChopList never handles money, so it cannot verify a payment.
+**Payment status** (`paid`, `pending`) is confirmed one of two ways, and the order's
+`paymentMethod` says which. For `transfer` it is **confirmed by the seller** after they
+see the bank transfer; ChopList cannot see the seller's bank, so it cannot verify
+that. For `paystack` it is confirmed by **Paystack**, and ChopList re-checks the
+amount with Paystack before marking the order paid. ChopList never holds the money in
+either case.
 
 **Possible duplicates.** When an order is placed, ChopList stores a fingerprint of
 the customer's phone number, the menu and the items and quantities. If another
@@ -296,9 +405,34 @@ Response `200`:
   "ordersCounted": 6,
   "definitions": {
     "activeSellers": "Sellers whose account status is active (not suspended or deactivated) AND who used the seller app or received an order in the last 30 days.",
-    "successRate": "Of the orders whose menu cut-off has already passed, the share that reached paid, out for delivery or delivered. Payment is confirmed by the seller; ChopList never handles money.",
+    "successRate": "Of the orders whose menu cut-off has already passed, the share that reached paid, out for delivery or delivered. Payment is confirmed by the seller (bank transfer) or by Paystack. ChopList itself never holds the money.",
     "...": "one entry per figure"
-  }
+  },
+  "payments": {
+    "gmv": { "allTime": 32000, "last30Days": 18500 },
+    "revenue": { "allTime": 555, "last30Days": 225 },
+    "paidOnPlatform": {
+      "allTime": { "orders": 3, "gmv": 22500 },
+      "last30Days": { "orders": 2, "gmv": 11500 }
+    },
+    "paidByTransfer": {
+      "allTime": { "orders": 3, "gmv": 9500 },
+      "last30Days": { "orders": 2, "gmv": 7000 }
+    },
+    "platformShare": 0.5,
+    "payingSellers": { "allTime": 1, "last30Days": 1 },
+    "sellersOnPlatform": { "allTime": 2, "last30Days": 2 },
+    "onlinePaymentsReady": 2,
+    "paymentsNeedingReview": 2,
+    "definitions": { "gmv": "...", "revenue": "...", "...": "one entry per figure above" }
+  },
+  "funnel": [
+    { "key": "registered", "label": "Registered", "count": 7, "fromPrevious": null, "definition": "..." },
+    { "key": "profileComplete", "label": "Profile complete", "count": 6, "fromPrevious": 0.8571, "definition": "..." },
+    { "key": "menuPublished", "label": "Menu published", "count": 5, "fromPrevious": 0.8333, "definition": "..." },
+    { "key": "firstOrder", "label": "First order", "count": 4, "fromPrevious": 0.8, "definition": "..." },
+    { "key": "firstPaidOrder", "label": "First paid order", "count": 3, "fromPrevious": 0.75, "definition": "..." }
+  ]
 }
 ```
 
@@ -308,8 +442,37 @@ Response `200`:
 - The rates are `null` when `ordersCounted` is 0 ("no data yet", not "0%").
 - `activeSellers` excludes suspended and deactivated sellers even if they were
   recently active. "Published" means a menu that has been opened at least once.
-- Success rate counts what the **seller confirmed**. An order paid by bank
-  transfer but never marked paid by the seller counts as not succeeded.
+- Success rate counts what was **confirmed**: by the seller (bank transfer) or by
+  Paystack. An order paid by bank transfer but never marked paid by the seller
+  counts as not succeeded.
+
+The `payments` block (all show their own `definitions`; show them beside the figures):
+
+- **`gmv`** is the food value of orders that reached paid or beyond, by either
+  method, **not** including any service fee. **`revenue`** is ChopList's own earnings:
+  the platform fee on Paystack-confirmed payments (0 during a seller's free orders),
+  in naira with up to two decimals. Revenue is **not** reduced by refunds (there is
+  no refund tracking yet), so a payment on an order later cancelled counts until a
+  person removes it. Both are given `allTime` and `last30Days` (by the day paid).
+- **`paidOnPlatform`** and **`paidByTransfer`** split paid orders by method, with
+  their GMV. Orders from before Paystack count as transfers. **`platformShare`** is
+  the Paystack share of all paid orders (`null` when none are paid yet).
+- **`payingSellers`** are sellers who have paid ChopList at least once (a confirmed
+  payment with a fee above 0). **`sellersOnPlatform`** are sellers with any confirmed
+  Paystack payment, including during their free orders.
+- **`onlinePaymentsReady`** is how many sellers can take online payments right now.
+- **`paymentsNeedingReview`** is payments where the customer's money arrived but the
+  order could not be completed (cancelled first, wrong amount, paid twice). **Each
+  one needs a person to refund or reinstate it**; `GET /api/admin/events` (type
+  `payment_webhook_issue`) says which order. Show this number prominently when it is
+  above 0.
+
+The `funnel` is a cohort funnel: each stage only counts sellers who also passed every
+earlier stage, so counts only shrink and `fromPrevious` never passes 1. "Registered"
+counts seller records, which exist only after the onboarding form is submitted; people
+who signed up with Clerk but never finished are not in ChopList's database (Clerk's
+dashboard shows them). Today "profile complete" equals "registered" because onboarding
+already requires every profile field.
 
 ### GET /api/admin/sellers
 
@@ -963,8 +1126,11 @@ description), not case-sensitive. Another seller's order or menu is a `404`.
 Order status: **pending -> paid -> out_for_delivery -> delivered**, and
 **cancelled** from any of them except `delivered`. The five values are exactly
 `pending`, `paid`, `out_for_delivery`, `delivered`, `cancelled` (underscores).
-Cancelling puts the order's portions back on sale. Payment is matched by hand;
-ChopList never moves money.
+Cancelling puts the order's portions back on sale. An order is paid in one of two
+ways, shown by `paymentMethod`: **`transfer`** (the customer pays the seller's bank
+and the seller marks it paid by hand) or **`paystack`** (the customer paid online and
+the order was marked paid automatically when Paystack confirmed; Paystack settles the
+money straight to the seller's bank). ChopList never holds the money in either case.
 
 Delivery confirmation: when the order goes out for delivery the server makes a
 6-digit code that only the customer can see (on their order page). The rider
@@ -982,6 +1148,7 @@ The seller's order object (includes the customer's phone and address):
   "note": "Extra pepper",
   "lines": [{ "itemId": "6710b2d3e4b0a1b2c3d4e5f8", "name": "Jollof rice", "unitPrice": 3500, "qty": 2 }],
   "total": 7000,
+  "paymentMethod": "transfer",
   "paidAt": null,
   "cancelledAt": null,
   "outForDeliveryAt": null,
@@ -990,7 +1157,9 @@ The seller's order object (includes the customer's phone and address):
 }
 ```
 
-The delivery code is never part of this object, in any seller route.
+The delivery code is never part of this object, in any seller route. Nor is anything
+about fees, the customer's service fee, or Paystack: the seller sees `total` and
+`paymentMethod`. `paymentMethod` is new; orders from before Paystack are `"transfer"`.
 
 ### GET /api/menus/:id/orders
 
@@ -1452,6 +1621,319 @@ Errors: `400 VALIDATION_ERROR` (`phoneLast4` missing or not 4 digits),
 `404 ORDER_NOT_FOUND` (wrong reference or wrong digits, same error for both),
 `429 RATE_LIMITED`.
 
+### POST /api/public/orders/:ref/pay
+
+Starts paying an order online with Paystack. Needs the order's access key (the
+`accessKey` from `POST /api/public/orders`) in the `X-Order-Key` header: the reference
+and phone digits are also known to the seller, so they are not enough. No body.
+
+```
+POST /api/public/orders/CL-7KQ2M/pay
+X-Order-Key: <the accessKey saved when the order was placed>
+```
+
+Response `200`:
+
+```json
+{
+  "authorizationUrl": "https://checkout.paystack.com/abc123xyz",
+  "reference": "CLP-9f2c4e8a1b7d3f6054a8c2e1",
+  "serviceFee": 216,
+  "total": 7716
+}
+```
+
+- `total` is **everything the customer pays**: the order total plus `serviceFee`.
+  `serviceFee` is `0` when the seller pays the fees. Show both before sending the
+  customer on ("Order ₦7,500 + service fee ₦216 = ₦7,716"). The quote exists as soon
+  as this call returns, so a confirmation screen with a "Continue to Paystack" button
+  is fine: nothing is charged until the customer pays on Paystack.
+- Send the customer's browser to `authorizationUrl` (`window.location.assign`).
+  It is always a `https://…paystack.com` address; the server refuses anything else.
+- `reference` identifies this payment attempt. **Save the order reference and this
+  `reference` in `localStorage` before redirecting.** Paystack sends the customer back
+  to the server's `PAYSTACK_CALLBACK_URL` with `?reference=…&trxref=…` (its reference,
+  not the order's), so the page needs the saved order reference to know which order to
+  check.
+- **Coming back from Paystack proves nothing.** The customer can reach that page without
+  paying, or never come back after paying. The order is marked paid only when Paystack
+  confirms to the server (the webhook). Always confirm with
+  `GET /api/public/orders/:ref/payment-status`.
+- Every call starts a **new** attempt with a new `reference`; calling it twice does not
+  charge twice, but an earlier attempt can still be completed on Paystack's page. If a
+  customer ends up paying two attempts, only the first counts and the second is flagged
+  for a refund by hand. So: disable the button once pressed, and do not call this on
+  every page load.
+- The order is not touched by this call; it stays `pending` until payment is confirmed.
+- Rate limit: 15 per network per 10 minutes (`429 RATE_LIMITED`).
+
+Errors: `404 ORDER_NOT_FOUND` (wrong key, missing key, unknown or malformed reference:
+all the same answer), `409 ORDER_CANCELLED`, `409 ORDER_ALREADY_PAID`,
+`409 PAYMENTS_NOT_READY` (this seller takes bank transfer only; show the transfer
+instructions), `503 PAYMENTS_UNAVAILABLE` (Paystack is down or payments are off; show
+the transfer instructions and a retry), `429 RATE_LIMITED`.
+
+### GET /api/public/orders/:ref/payment-status
+
+Where an order stands on payment: for the page the customer lands on after Paystack,
+which polls it until it says `paid`. Same `X-Order-Key` rule as `/pay`, and the same
+`404 ORDER_NOT_FOUND` for every way of being wrong. Read-only: it never calls Paystack
+and never changes anything. The response is never cached (`Cache-Control: no-store`).
+
+```
+GET /api/public/orders/CL-7KQ2M/payment-status
+X-Order-Key: <the accessKey saved when the order was placed>
+```
+
+Response `200`:
+
+```json
+{
+  "ref": "CL-7KQ2M",
+  "orderStatus": "paid",
+  "paymentMethod": "paystack",
+  "state": "paid",
+  "paid": true,
+  "total": 7500,
+  "serviceFee": 216,
+  "amountCharged": 7716,
+  "reference": "CLP-9f2c4e8a1b7d3f6054a8c2e1",
+  "paidAt": "2026-10-16T10:03:21.000Z",
+  "onlinePaymentAvailable": true
+}
+```
+
+| `state` | Meaning | What the page does |
+| ------- | ------- | ------------------ |
+| `not_started` | No online payment has been started | Show "Pay online" (if `onlinePaymentAvailable`) and the bank transfer instructions |
+| `awaiting_payment` | A payment was started and Paystack has not confirmed it | Keep polling. If the customer left Paystack without paying, offer "Try again" |
+| `paid` | The order is paid; `paymentMethod` says how | Stop polling. Show the confirmation |
+| `under_review` | The customer's money arrived but the order could not be completed (for example the seller cancelled it first) | Stop polling. Say ChopList is sorting it out and to contact the seller. Do not tell them to pay again |
+| `cancelled` | Cancelled, and nothing was taken | Stop polling. Say it was cancelled |
+
+- `serviceFee`, `amountCharged` and `reference` come from the attempt being described
+  and are `null` before any online attempt, and for orders paid by bank transfer.
+  `amountCharged` is the whole amount the customer paid, in naira.
+- `onlinePaymentAvailable` is `true` only when the server has payments switched on and
+  the seller is active and set up. Use it to decide whether to show the Pay button.
+- **Polling:** every 3 seconds for the first 30 seconds, then every 10 seconds, and stop
+  after about 5 minutes with "If you have been charged, we will confirm your order
+  shortly" (the confirmation can arrive late; the next visit to this page will show it).
+  The limit is 300 requests per network per 10 minutes.
+- The response never contains fees taken by ChopList or Paystack, the seller's identity,
+  or anything about their payout account.
+
+Errors: `404 ORDER_NOT_FOUND`, `429 RATE_LIMITED`.
+
+## Paystack webhook
+
+`POST /api/webhooks/paystack` is called by **Paystack's servers**, never by the
+frontend. It is how an online payment becomes a paid order. Set this address as the
+webhook URL in the Paystack dashboard (see [paystack-setup.md](paystack-setup.md)):
+`https://api.choplistafrica.com/api/webhooks/paystack`.
+
+- **Signature.** Paystack signs every request body with the account's secret key
+  (HMAC-SHA512, hex, in the `x-paystack-signature` header). The server checks it
+  against the exact bytes received, before reading anything else. A missing or wrong
+  signature is `401 INVALID_SIGNATURE` and nothing is changed. This route reads the
+  body raw (limit 100 KB); every other route reads JSON normally.
+- **Only `charge.success` does anything.** Any other event, a body that is not JSON, or
+  a reference that is not ChopList's, is acknowledged with `200 {"received": true}` and
+  ignored (an error status would only make Paystack resend the same thing).
+- **The webhook only names the payment.** The server then asks Paystack directly for
+  that payment and checks that it succeeded, that the reference matches, and that the
+  amount and currency are exactly what ChopList asked for. Amounts in the webhook body
+  are never used.
+- **Then, once:** the payment is recorded as succeeded, the order is marked `paid` with
+  `paymentMethod: "paystack"` (and keeps the fee figures of the attempt that was paid),
+  and the seller's paid-order count goes up by one. Each of these is a conditional
+  write that only one request can win, so repeats, simultaneous deliveries and two
+  deliveries racing all count the payment exactly once.
+
+| Situation | Response | Result |
+| --------- | -------- | ------ |
+| Good payment | `200` | Order paid, counted once |
+| Same event again (Paystack retries) | `200` | Nothing changes |
+| Wrong signature or none | `401 INVALID_SIGNATURE` | Nothing changes |
+| Unknown event, bad body, foreign reference | `200` | Ignored |
+| Reference not in ChopList's records | `200` | Logged (`UNKNOWN_REFERENCE`) |
+| Paystack does not confirm it succeeded | `200` | Logged (`NOT_CONFIRMED`); can still succeed later |
+| Wrong amount or currency | `200` | Payment set aside as `needs_review`; order stays unpaid (`AMOUNT_MISMATCH`) |
+| Customer paid the same order twice | `200` | First counts; the second is `needs_review` (`DUPLICATE_PAYMENT`) |
+| Order cancelled, or already paid by transfer | `200` | Payment set aside as `needs_review`; order unchanged; count not touched (`ORDER_NOT_PAYABLE`) |
+| Paystack cannot be reached to verify | `503` | Nothing changes; Paystack resends later |
+| Server bug or database failure | `500` | Nothing is lost; Paystack resends |
+| No Paystack key on the server | `503` | Nothing is accepted |
+
+Every row marked `needs_review` means **the customer's money is with Paystack and a
+person must refund it (or reinstate the order)**. There is no automated refund. These
+show in `paymentsNeedingReview` on the admin overview and as `payment_webhook_issue`
+events on `GET /api/admin/events` (codes above, with the order reference and amounts,
+never customer or bank details).
+
+## Online payments (Paystack)
+
+**ChopList does not hold customer money.** Each seller has a Paystack "subaccount"
+pointing at their bank account. When a customer pays, Paystack splits the payment
+itself: ChopList's share (if any) stays with ChopList's Paystack account and the rest
+is settled to the seller's bank by Paystack. There is no wallet, no balance and no
+payout code in ChopList. Bank transfer keeps working for every order.
+
+### What a payment costs
+
+- **Free orders.** A seller's first **50** orders paid through Paystack carry no
+  ChopList fee (setting `FREE_ORDERS`). Orders paid by bank transfer do not count.
+- **After that**, ChopList charges **3%** of the order amount (setting
+  `PLATFORM_FEE_BPS`, in basis points: 300 = 3%). The fee is on the order, not on the
+  service fee.
+- **Paystack's own charge** is separate: about **1.5% + ₦100 per payment, capped at
+  ₦2,000**. These figures are ChopList's copy of Paystack's published price (see
+  `PAYSTACK_PRICING` in `backend/src/config.ts`) and **must be re-checked against
+  https://paystack.com/pricing before going live and whenever Paystack changes it.** If
+  they are wrong the customer is quoted the wrong service fee, or ChopList covers the
+  gap.
+- **Who pays the card fees** is the seller's setting (`feeMode`), never the customer's
+  choice:
+  - `customer` (the default): a **service fee** is added to the customer's total,
+    worked out so the seller still receives the **full order amount**. The fee covers
+    Paystack's charge and ChopList's fee, so it is larger once the free orders are used.
+  - `seller`: the customer pays exactly the order amount. ChopList's fee and Paystack's
+    charge come out of what the seller receives.
+- The tier is decided when the payment is started, from the seller's paid-order count
+  at that moment, and **frozen on the order**. Changing `FREE_ORDERS`,
+  `PLATFORM_FEE_BPS` or the seller's `feeMode` later never re-prices a payment already
+  started.
+- The platform fee shown below is what ChopList keeps. The "Paystack charge" is an
+  **estimate** from the constants above; the real charge is Paystack's.
+
+### Worked examples
+
+All amounts are naira. "Free" is a seller's first 50 paid orders; "3%" is from the 51st.
+These figures are produced by the same calculator the server uses.
+
+**₦7,500 order**
+
+| Fee mode | Tier | Customer pays | Service fee | ChopList fee | Paystack charge (est.) | Seller receives |
+| -------- | ---- | ------------- | ----------- | ------------ | ---------------------- | --------------- |
+| customer | free | 7,716 | 216 | 0 | 215.74 | 7,500 |
+| customer | 3% | 7,945 | 445 | 225 | 219.18 | 7,500 |
+| seller | free | 7,500 | 0 | 0 | 212.50 | 7,287.50 |
+| seller | 3% | 7,500 | 0 | 225 | 212.50 | 7,062.50 |
+
+**₦11,000 order**
+
+| Fee mode | Tier | Customer pays | Service fee | ChopList fee | Paystack charge (est.) | Seller receives |
+| -------- | ---- | ------------- | ----------- | ------------ | ---------------------- | --------------- |
+| customer | free | 11,270 | 270 | 0 | 269.05 | 11,000 |
+| customer | 3% | 11,605 | 605 | 330 | 274.08 | 11,000 |
+| seller | free | 11,000 | 0 | 0 | 265.00 | 10,735 |
+| seller | 3% | 11,000 | 0 | 330 | 265.00 | 10,405 |
+
+In `customer` mode the service fee is rounded **up** to a whole naira so ChopList is
+never short, so on the free tier ChopList keeps a few kobo. The ₦100 part of Paystack's
+charge applies to every payment, so small orders carry a large percentage (a ₦2,000
+order on the free tier has a ₦132 service fee).
+
+### How the split is sent to Paystack
+
+For each payment the server sends Paystack the seller's `subaccount`, a
+`transaction_charge` (ChopList's share, in kobo) and a `bearer` (who Paystack takes its
+own charge from). `customer` mode: `transaction_charge` is the whole service fee and the
+bearer is ChopList's account; `seller` mode: `transaction_charge` is ChopList's fee
+(omitted when 0) and the bearer is the seller's subaccount. Money is whole naira
+everywhere in the API and database; kobo appears only in the call to Paystack.
+
+## For the frontend team
+
+What the frontend needs to build or change for online payments. The backend does not
+touch `frontend/`; this is the list. Everything is optional in the sense that **bank
+transfer keeps working unchanged**: until the frontend ships these, nothing breaks.
+
+**Seller onboarding and settings**
+
+1. Load the bank list with `GET /api/sellers/banks` and show a **bank dropdown** (name
+   shown, `code` sent). Send the chosen `code` as `payment.bankCode` in
+   `PUT /api/sellers/me`, together with `bankName` (the dropdown's name). If the list
+   returns `503`, let the seller continue without a bank code.
+2. Existing sellers have no bank code: show a prompt in their dashboard to pick their
+   bank, and save with `PUT /api/sellers/me`.
+3. Show `paymentsReady` and, when false, the `paymentsIssue` message (table under
+   "Seller payments") with a **Retry** button calling `POST /api/sellers/me/payments/retry`.
+4. A **fee mode setting** ("Who pays card fees?": customer or me) calling
+   `PUT /api/sellers/me/fee-mode`, with a plain explanation of both (see "What a payment
+   costs"). Show `freeOrdersRemaining` from `GET /api/sellers/me/payments` ("12 of your
+   first 50 online orders left free").
+5. Seller order cards can show `paymentMethod` ("Paid online" vs "Bank transfer"). An
+   online-paid order is already `paid`; the seller should not expect a transfer for it.
+
+**Customer order page**
+
+6. After the order is placed, show the bank transfer instructions as today. If
+   `onlinePaymentAvailable` (from `payment-status`) is true, also show **Pay online**.
+7. Pay online: `POST /api/public/orders/:ref/pay`, show the breakdown (`total`,
+   `serviceFee`), save the order ref and the returned `reference` in `localStorage`,
+   then redirect to `authorizationUrl`.
+8. A **return page** at the server's `PAYSTACK_CALLBACK_URL` (agree the route with the
+   backend; it must be on an allowed origin). It reads the saved order ref and polls
+   `payment-status` (see its polling guidance), then shows the right screen for each
+   `state`. Do not trust the page being reached as proof of payment.
+9. Handle `PAYMENTS_NOT_READY`, `PAYMENTS_UNAVAILABLE`, `ORDER_ALREADY_PAID` and
+   `ORDER_CANCELLED` from `/pay` by falling back to the transfer instructions or the
+   right message.
+
+**Admin**
+
+10. Show the `payments` and `funnel` blocks of `GET /api/admin/overview` with their
+    `definitions`, and make `paymentsNeedingReview` hard to miss when above 0.
+
+## Known limits and follow-ups
+
+Not built, on purpose. Be upfront about these when presenting.
+
+- **Real Paystack behaviour is untested.** All tests use a fake Paystack. The request and
+  response shapes were written from Paystack's documented API and have not yet been run
+  against Paystack's test mode, nor has the webhook signature been checked against a
+  payload Paystack signed. Two behaviours need a manual test-mode check: whether a
+  `transaction_charge` of 0 (free tier, `seller` mode) really means "no ChopList cut",
+  and how bank lookups behave in test mode. Steps are in
+  [paystack-setup.md](paystack-setup.md).
+- **Test mode only until Paystack verifies the business** (live keys need it). The
+  server accepts any `sk_` key, so use the test key until then.
+- **No refunds.** A payment flagged `needs_review` is refunded by hand in the Paystack
+  dashboard. `revenue` is not reduced by refunds, and a flagged payment on a cancelled
+  order is not counted as revenue but a *succeeded* one is until removed.
+- **Unpaid orders still hold stock.** There is no expiry: an order that is started online
+  but never paid, like one never paid by transfer, keeps its portions off sale until the
+  seller cancels it. An expiry job is the fix.
+- **If a webhook is lost, the customer stays on "awaiting payment".** Paystack retries,
+  but if it never arrives the order is not marked paid. A fallback (the status route
+  asking Paystack itself) is possible and safe, but spends Paystack calls on every poll.
+- **No fee preview.** The customer sees the service fee only after pressing Pay. A
+  separate quote route would show it first.
+- **Fake payer email.** Paystack requires one, customers do not give one, so each
+  payment uses `<ref>@orders.choplistafrica.com`. Paystack's receipts go nowhere.
+  Collecting a real email needs a frontend change.
+- **The "4.5% total" claim is true only for large orders.** The ₦100 flat fee dominates
+  small orders. In `customer` mode on the 3% tier the customer's extra is about 5.9% of
+  a ₦7,500 order, 5.5% of ₦11,000, and 4.8% of ₦50,000. In `seller` mode the seller
+  loses about 5.8% of ₦7,500. Do not promise 4.5%.
+- **ChopList carries Paystack's pricing risk in `customer` mode.** The service fee is
+  computed from the estimate; if Paystack charges more (for example an international
+  card), the difference comes out of ChopList's fee. The estimate and the platform fee
+  are stored on every payment, so the gap can be measured.
+- **Count can be missed in a rare crash.** If the server dies after marking an order paid
+  and before adding to the seller's count, that one order is not counted (the seller
+  gets an extra free order). Closing this needs MongoDB transactions (a replica set).
+- **Near the free-order boundary**, two payments started at 49 paid orders can both be
+  free: the tier is decided when payment starts and counted when it completes.
+- **A seller marking an order paid by hand while an online payment is in progress**
+  is not blocked. If the customer then pays online, that payment is flagged for refund.
+- **The webhook trusts the signature only,** not Paystack's sending addresses.
+- **The retry route has no limit of its own.** Each call spends a few Paystack requests.
+- **Admin order detail does not yet show Paystack payments** for one order; use the event
+  log and the Paystack dashboard.
+- **"Profile complete" in the funnel equals "registered"** today (see the admin overview).
+
 ## Typical flows
 
 ### A seller signs up and sets up a shop
@@ -1481,11 +1963,28 @@ Errors: `400 VALIDATION_ERROR` (`phoneLast4` missing or not 4 digits),
    reads it to the rider. If `deliveryCodeHidden` is `true`, say "open this
    order on the device you ordered from".
 
+### A customer pays online
+
+1. The customer has placed an order (above) and saved the `accessKey`.
+2. `GET /api/public/orders/:ref/payment-status` with `X-Order-Key`. If
+   `onlinePaymentAvailable` is `true`, offer **Pay online** next to the bank transfer
+   instructions.
+3. `POST /api/public/orders/:ref/pay`: show `serviceFee` and `total`, save the order
+   reference and the returned `reference`, then redirect to `authorizationUrl`.
+4. The customer pays on Paystack's page. Paystack tells ChopList's server
+   (`POST /api/webhooks/paystack`); the server checks the signature, asks Paystack
+   to confirm the amount, marks the order paid and counts it for the seller.
+5. Paystack sends the customer back to the return page. It polls
+   `payment-status` until `state` is `paid` (or one of the other end states).
+6. The seller sees the order as `paid` with `paymentMethod: "paystack"` and carries on
+   as usual (out for delivery, delivery code, delivered).
+
 ### The seller runs the week
 
 1. `GET /api/menus/:id/orders?status=pending` to see new orders.
 2. Match payments to references in the bank app, then
-   `PATCH /api/orders/:ref/paid`. Cancel unpaid ones with
+   `PATCH /api/orders/:ref/paid` (orders paid online are already `paid`: skip those).
+   Cancel unpaid ones with
    `PATCH /api/orders/:ref/cancel`, which puts the portions back on sale.
 3. After the cut-off: `GET /api/menus/:id/prep-sheet` (what to cook) and
    `GET /api/menus/:id/delivery-list` (who gets what, by area), then

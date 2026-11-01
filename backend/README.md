@@ -176,8 +176,11 @@ Be upfront about these when presenting.
 - **Unpaid orders hold stock until the seller cancels them.** There is no
   automatic expiry. A person who orders and never pays keeps those portions off
   sale until the seller cancels. (Rate limits stop one network doing this in bulk.)
-- **Payment matching is manual, by design.** ChopList never sees or moves money.
-  The seller matches the reference in their bank app and marks the order paid.
+- **Bank transfer is matched by hand.** ChopList cannot see the seller's bank. The
+  seller matches the reference in their bank app and marks the order paid. Online
+  payment through Paystack is automatic (see "Online payments" in
+  [docs/api.md](../docs/api.md) and [docs/paystack-setup.md](../docs/paystack-setup.md)).
+  Either way ChopList never holds customer money: Paystack settles to the seller.
 - **Cancel is two writes** (status, then stock). If the server crashes between
   them, the order is cancelled but its portions stay held. This is logged as
   `STOCK NOT RETURNED` with the menu and lines, to fix by hand. Status is changed

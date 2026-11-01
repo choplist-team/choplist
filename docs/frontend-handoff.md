@@ -107,7 +107,10 @@ that check.
 
 So nobody misreads a number:
 
-- **Payment status** is "confirmed by the seller". ChopList never sees the bank transfer.
+- **Payment status** is confirmed by the seller (bank transfer) or by Paystack (online
+  payment); an order's `paymentMethod` says which. ChopList never sees the bank
+  transfer and never holds money. For the new revenue and funnel figures, see
+  `GET /api/admin/overview` in [api.md](api.md).
 - **Conversion** is orders divided by views. Label it an **indicator**: views are page
   loads, not unique visitors, so it can pass 100% and is `null` with no views.
 - **Customers (new and returning)** are approximate: a person with two phone numbers
