@@ -2,6 +2,7 @@ import { createApp } from './app.js';
 import { createClerkAuth } from './auth/clerk.js';
 import { parseEnv, type Config } from './config.js';
 import { connectDb, disconnectDb } from './db.js';
+import { createPaystackClient } from './payments/paystack.js';
 
 let config: Config;
 try {
@@ -24,6 +25,10 @@ const app = createApp({
   allowedOrigins: config.ALLOWED_ORIGINS,
   trustProxyHops: config.TRUST_PROXY_HOPS,
   adminClerkUserIds: config.ADMIN_CLERK_USER_IDS,
+  // No key = payments off; the API still runs on bank transfer.
+  paystack: config.PAYSTACK_SECRET_KEY ? createPaystackClient(config.PAYSTACK_SECRET_KEY) : null,
+  pricing: { freeOrders: config.FREE_ORDERS, platformFeeBps: config.PLATFORM_FEE_BPS },
+  paystackCallbackUrl: config.PAYSTACK_CALLBACK_URL,
   auth: createClerkAuth({
     secretKey: config.CLERK_SECRET_KEY,
     publishableKey: config.CLERK_PUBLISHABLE_KEY,

@@ -11,6 +11,10 @@ function isOrigin(value: string): boolean {
   }
 }
 
+// Also the fallback the app uses when it is built without a config (tests).
+export const DEFAULT_FREE_ORDERS = 50;
+export const DEFAULT_PLATFORM_FEE_BPS = 300;
+
 const EnvSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(5000),
 
@@ -66,9 +70,9 @@ const EnvSchema = z.object({
   // next one the fee is PLATFORM_FEE_BPS basis points of the order (100 bps = 1%,
   // so 300 = 3%). Changing these affects NEW payments only: each order keeps the
   // fee it was quoted.
-  FREE_ORDERS: z.coerce.number().int().min(0).max(100_000).default(50),
+  FREE_ORDERS: z.coerce.number().int().min(0).max(100_000).default(DEFAULT_FREE_ORDERS),
   // Capped at 20% so a slipped zero (300 typed as 3000) is refused at startup.
-  PLATFORM_FEE_BPS: z.coerce.number().int().min(0).max(2000).default(300),
+  PLATFORM_FEE_BPS: z.coerce.number().int().min(0).max(2000).default(DEFAULT_PLATFORM_FEE_BPS),
 
   // ---- Paystack (card/transfer payments with the seller paid directly) ----
   // Optional: without a key the API runs as before with manual bank transfer
