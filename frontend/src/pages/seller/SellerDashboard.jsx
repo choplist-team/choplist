@@ -9,6 +9,7 @@ import { useCurrentSeller } from "@/hooks/useCurrentSeller";
 import { useGetMenus } from "@/hooks/useGetMenus";
 import { useOpenMenu } from "@/hooks/use-open-menu";
 import { useCloseMenu } from "@/hooks/use-close-menu";
+import SuspendedAccount from "@/components/seller/SuspendedAccount";
 
 const formatPrice = (amount) =>
   new Intl.NumberFormat("en-NG", {
@@ -143,7 +144,8 @@ export default function SellerDashboard() {
     error: menusError,
     refetch: refetchMenus,
   } = useGetMenus({
-    enabled: !isSellerPending && !needsProfile && !isSellerError && Boolean(seller)
+    enabled:
+      !isSellerPending && !needsProfile && !isSellerError && Boolean(seller),
   });
 
   const menusNeedProfile =
@@ -161,6 +163,10 @@ export default function SellerDashboard() {
         </div>
       </main>
     );
+  }
+
+  if (sellerError?.code === "ACCOUNT_SUSPENDED") {
+    return <SuspendedAccount />;
   }
 
   if (isSellerError && !needsProfile) {
