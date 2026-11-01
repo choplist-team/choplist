@@ -38,6 +38,11 @@ const paymentSchema = new Schema(
     // The fee snapshot (same figures as on the order, kept with the money).
     platformFeeKobo: kobo,
     paystackFeeKobo: kobo,
+    // Also frozen here, so when this attempt is the one that gets paid the order
+    // can be given exactly its figures (an order may have several attempts).
+    // Optional: not needed to find or understand a payment.
+    platformFeeBps: { type: Number, min: 0, validate: { validator: Number.isInteger, message: '{PATH} must be a whole number' } },
+    serviceFee: { type: Number, min: 0, validate: { validator: Number.isInteger, message: '{PATH} must be a whole number' } },
     currency: { type: String, required: true, default: 'NGN', enum: ['NGN'] },
     // Who Paystack takes its processing fee from: ChopList's cut (customer pays
     // fees) or the seller's share (seller pays fees).

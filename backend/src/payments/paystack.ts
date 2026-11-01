@@ -50,12 +50,24 @@ export type InitializeInput = {
   metadata: Record<string, string>;
 };
 
+// What Paystack says about a transaction when we ask it directly.
+export type VerifiedTransaction = {
+  // 'success' is the only status that means money arrived.
+  status: string;
+  reference: string;
+  amountKobo: number;
+  currency: string;
+};
+
 export interface PaystackClient {
   listBanks(): Promise<PaystackBank[]>;
   // Looks the account up at the bank; returns the name the bank has on file.
   resolveAccount(input: { bankCode: string; accountNumber: string }): Promise<{ accountName: string }>;
   createSubaccount(input: SubaccountInput): Promise<{ subaccountCode: string }>;
   updateSubaccount(code: string, input: SubaccountInput): Promise<void>;
+  // Asks Paystack for the truth about a payment. The webhook only tells us WHICH
+  // payment to look at; this is where we learn whether and how much was paid.
+  verifyTransaction(reference: string): Promise<VerifiedTransaction>;
   // Starts a payment; the customer is sent to authorizationUrl to pay.
   initializeTransaction(input: InitializeInput): Promise<{ authorizationUrl: string }>;
 }
@@ -150,6 +162,22 @@ export function createPaystackClient(secretKey: string, fetchImpl: FetchLike = f
 
     async updateSubaccount(code, input) {
       await call('PUT', `/subaccount/${encodeURIComponent(code)}`, subaccountBody(input));
+    },
+
+    async verifyTransaction(reference) {
+      const envelope = await call('GET', `/transaction/verify/${encodeURIComponent(reference)}`);
+      const data = isRecord(envelope.data) ? envelope.data : null;
+      if (
+        !data ||
+        typeof data.status !== 'string' ||
+        typeof data.reference !== 'string' ||
+        typeof data.currency !== 'string' ||
+        typeof data.amount !== 'number' ||
+        !Number.isInteger(data.amount)
+      ) {
+        throw new PaystackError('unavailable', 'Paystack sent an unexpected verification reply');
+      }
+      return { status: data.status, reference: data.reference, amountKobo: data.amount, currency: data.currency };
     },
 
     async initializeTransaction(input) {

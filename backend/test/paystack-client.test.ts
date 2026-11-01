@@ -91,6 +91,47 @@ describe('createPaystackClient', () => {
     expect(fetchFn.mock.calls.length).toBeLessThanOrEqual(10);
   });
 
+  describe('verifyTransaction', () => {
+    const verifyReply = (data: Record<string, unknown>) => reply(200, { status: true, data });
+
+    it('asks Paystack about the reference and returns status, reference, kobo and currency', async () => {
+      const fetchFn = mockFetch(verifyReply({ status: 'success', reference: 'CLP-abc', amount: 771_600, currency: 'NGN', customer: { email: 'x@y.z' } }));
+      await expect(createPaystackClient(KEY, fetchFn).verifyTransaction('CLP-abc')).resolves.toEqual({
+        status: 'success',
+        reference: 'CLP-abc',
+        amountKobo: 771_600,
+        currency: 'NGN',
+      });
+      const { url, init } = sent(fetchFn);
+      expect(url).toBe('https://api.paystack.co/transaction/verify/CLP-abc');
+      expect(init.method).toBe('GET');
+      expect((init.headers as Record<string, string>).Authorization).toBe(`Bearer ${KEY}`);
+    });
+
+    it('encodes the reference so it cannot change the address', async () => {
+      const fetchFn = mockFetch(verifyReply({ status: 'success', reference: 'x', amount: 1, currency: 'NGN' }));
+      await createPaystackClient(KEY, fetchFn).verifyTransaction('../subaccount?x=1');
+      expect(sent(fetchFn).url).toBe('https://api.paystack.co/transaction/verify/..%2Fsubaccount%3Fx%3D1');
+    });
+
+    it('reports a transaction Paystack does not know as "rejected"', async () => {
+      const fetchFn = mockFetch(reply(404, { status: false, message: 'Transaction reference not found' }));
+      expect(await failure(createPaystackClient(KEY, fetchFn).verifyTransaction('CLP-nope'))).toMatchObject({ kind: 'rejected', status: 404 });
+    });
+
+    it.each([
+      ['no amount', { status: 'success', reference: 'r', currency: 'NGN' }],
+      ['an amount that is text', { status: 'success', reference: 'r', amount: '771600', currency: 'NGN' }],
+      ['a fractional amount', { status: 'success', reference: 'r', amount: 10.5, currency: 'NGN' }],
+      ['no status', { reference: 'r', amount: 1, currency: 'NGN' }],
+      ['no currency', { status: 'success', reference: 'r', amount: 1 }],
+      ['no reference', { status: 'success', amount: 1, currency: 'NGN' }],
+    ])('a reply with %s is "unavailable", never guessed at', async (_name, data) => {
+      const fetchFn = mockFetch(verifyReply(data));
+      expect((await failure(createPaystackClient(KEY, fetchFn).verifyTransaction('r'))).kind).toBe('unavailable');
+    });
+  });
+
   describe('initializeTransaction', () => {
     const input = {
       email: 'cl-7kq2m@orders.choplistafrica.com',

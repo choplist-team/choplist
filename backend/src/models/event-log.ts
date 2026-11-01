@@ -10,6 +10,7 @@ export const EVENT_TYPES = [
   'missing_order_report', // a customer says their order is missing
   'payment_setup_failed', // a seller's Paystack payout account could not be set up
   'payment_start_failed', // a customer's Paystack payment could not be started
+  'payment_webhook_issue', // a Paystack confirmation that needs a human look (wrong amount, cancelled order...)
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
