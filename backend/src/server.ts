@@ -32,7 +32,9 @@ const app = createApp({
 });
 
 const server = app.listen(config.PORT, () => {
-  console.log(`ChopList API listening on port ${config.PORT}`);
+  // The count only (no values): in the Render log it shows at a glance whether
+  // a changed ALLOWED_ORIGINS was picked up by the redeploy.
+  console.log(`ChopList API listening on port ${config.PORT} (${config.ALLOWED_ORIGINS.length} allowed origins)`);
 });
 
 // e.g. the port is already in use.
