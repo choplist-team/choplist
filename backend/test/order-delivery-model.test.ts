@@ -128,11 +128,20 @@ describe('toSellerOrder never shows the secrets', () => {
         'note',
         'outForDeliveryAt',
         'paidAt',
+        'paymentMethod',
         'ref',
         'status',
         'total',
       ].sort(),
     );
+  });
+
+  it('says how the order was paid, and shows an order from before Paystack as a transfer', () => {
+    expect(toSellerOrder(new OrderModel({ ...validOrder(), paymentMethod: 'paystack' })).paymentMethod).toBe('paystack');
+    expect(toSellerOrder(new OrderModel(validOrder())).paymentMethod).toBe('transfer');
+    const legacy = new OrderModel(validOrder());
+    legacy.set('paymentMethod', undefined);
+    expect(toSellerOrder(legacy).paymentMethod).toBe('transfer');
   });
 
   it('shows the delivery timestamps, and null when they have not happened', () => {

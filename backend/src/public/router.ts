@@ -4,12 +4,14 @@ import { ZodError } from 'zod';
 import { AppError } from '../errors.js';
 import { MenuModel, type MenuDoc } from '../models/menu.js';
 import { OrderModel, REF_PATTERN, type OrderDoc } from '../models/order.js';
-import { SellerModel, isSellerActive, type SellerDoc } from '../models/seller.js';
+import { SellerModel, isSellerActive, sellerPaymentsReady, type SellerDoc } from '../models/seller.js';
 import { recordMenuView } from '../analytics/record-view.js';
 import { logEvent } from '../events/log.js';
 import { accessKeyMatches, generateAccessKey } from '../orders/delivery-code.js';
 import { placeOrder } from '../orders/place-order.js';
 import { startPayment, type PayOptions } from '../payments/pay.js';
+import { buildPaymentStatus } from '../payments/status.js';
+import { PaymentModel } from '../models/payment.js';
 import { missingOrderBody, submitMissingOrderReport } from '../support/missing-order.js';
 import { createRateLimiters, type RateLimitSettings } from '../middleware/rate-limit.js';
 import { lookupSchema, placeOrderSchema } from './schema.js';
@@ -212,6 +214,32 @@ export function createPublicRouter(rateLimits: RateLimitSettings, pay: PayOption
     if (!seller) throw new Error(`Seller ${order.sellerId.toString()} missing for order ${order.ref}`);
 
     res.json(await startPayment(order, seller, pay));
+  });
+
+  // Where this order stands on payment: for the page the customer lands on after
+  // Paystack, which polls it until the state is "paid". Same key rule as /pay (the
+  // ref and phone digits are not enough), same 404 for every way of being wrong.
+  // Read-only: only the Paystack webhook ever changes an order's payment state.
+  router.get('/orders/:ref/payment-status', limit.status, async (req, res) => {
+    const ref = String(req.params.ref ?? '').trim().toUpperCase();
+    const notFound = new AppError(404, 'ORDER_NOT_FOUND', 'No order matches that reference and key');
+    if (!REF_PATTERN.test(ref)) throw notFound;
+
+    const order = await OrderModel.findOne({ ref }).select('+accessKeyHash');
+    if (!order || !accessKeyMatches(req.get('x-order-key'), order.accessKeyHash)) throw notFound;
+
+    const [seller, attempts] = await Promise.all([
+      SellerModel.findById(order.sellerId),
+      PaymentModel.find({ orderId: order._id }, { status: 1, reference: 1, amountKobo: 1, serviceFee: 1, paidAt: 1, createdAt: 1 })
+        .sort({ createdAt: -1 })
+        .limit(50)
+        .lean(),
+    ]);
+    const available = pay.paystack !== null && seller !== null && isSellerActive(seller) && sellerPaymentsReady(seller);
+
+    // Polled every few seconds: a browser or proxy must never answer from a copy.
+    res.set('Cache-Control', 'no-store');
+    res.json(buildPaymentStatus(order, attempts, available));
   });
 
   // Track an order. Needs the ref AND the last 4 digits of the phone used.

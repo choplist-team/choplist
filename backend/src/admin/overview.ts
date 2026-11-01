@@ -1,6 +1,7 @@
 import { MenuModel } from '../models/menu.js';
 import { OrderModel } from '../models/order.js';
 import { SellerModel } from '../models/seller.js';
+import { funnelOverview, paymentsOverview } from './revenue.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -19,7 +20,7 @@ export const DEFINITIONS = {
   ordersLast7Days: 'Orders placed in the last 7 days, whatever their status.',
   ordersLast30Days: 'Orders placed in the last 30 days, whatever their status.',
   successRate:
-    'Of the orders whose menu cut-off has already passed, the share that reached paid, out for delivery or delivered. Payment is confirmed by the seller; ChopList never handles money.',
+    'Of the orders whose menu cut-off has already passed, the share that reached paid, out for delivery or delivered. Payment is confirmed by the seller (bank transfer) or by Paystack. ChopList itself never holds the money.',
   fulfilmentRate:
     'Of the same orders (menu cut-off passed), the share that was delivered.',
 } as const;
@@ -43,6 +44,8 @@ export async function overview(now: Date = new Date()) {
     ordersLast30Days,
     sellersWithRecentOrders,
     [outcome],
+    payments,
+    funnel,
   ] = await Promise.all([
     SellerModel.countDocuments({}),
     MenuModel.countDocuments({ status: { $in: ['open', 'closed'] } }),
@@ -74,6 +77,8 @@ export async function overview(now: Date = new Date()) {
         },
       },
     ]),
+    paymentsOverview(now),
+    funnelOverview(),
   ]);
 
   // A seller with no status stored (created before statuses) is active.
@@ -97,6 +102,9 @@ export async function overview(now: Date = new Date()) {
     successRate: rate(outcome?.reached ?? 0, denominator),
     fulfilmentRate: rate(outcome?.delivered ?? 0, denominator),
     ordersCounted: denominator,
+    // Money and the seller funnel. Each carries its own definitions.
+    payments,
+    funnel,
     definitions: DEFINITIONS,
   };
 }

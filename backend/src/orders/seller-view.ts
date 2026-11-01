@@ -1,4 +1,4 @@
-import type { OrderDoc } from '../models/order.js';
+import { orderPaymentMethod, type OrderDoc } from '../models/order.js';
 
 // What the seller sees for an order: everything needed to cook, deliver and
 // match payment, including the customer's phone and address.
@@ -22,6 +22,10 @@ export function toSellerOrder(order: OrderDoc) {
       qty: line.qty,
     })),
     total: order.total,
+    // How it was paid: 'paystack' (settled to the seller's bank by Paystack) or
+    // 'transfer' (the customer paid the seller's bank directly). Nothing about
+    // fees, the service fee or Paystack's internals is shown to the seller here.
+    paymentMethod: orderPaymentMethod(order),
     paidAt: order.paidAt ?? null,
     cancelledAt: order.cancelledAt ?? null,
     outForDeliveryAt: order.outForDeliveryAt ?? null,

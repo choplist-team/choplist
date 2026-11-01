@@ -15,7 +15,14 @@ export type RateLimitSettings = {
   reportsPerWindow?: number;
   // Payments started per IP per window. Optional; each one calls Paystack.
   paymentsPerWindow?: number;
+  // Payment-status polls per IP per window. Optional; see below.
+  statusPerWindow?: number;
 };
+
+// A customer waiting for Paystack's confirmation polls every few seconds. The
+// order key is unguessable, so this limit is only about database load, and many
+// customers can share one mobile-network address: generous on purpose.
+export const DEFAULT_STATUS_PER_WINDOW = 300;
 
 // Starting a payment costs a call to Paystack on our key, so this is tighter
 // than lookups, yet a customer who retries a few times is nowhere near it.
@@ -58,6 +65,7 @@ export function createRateLimiters(settings: RateLimitSettings) {
     orders: limiter(settings.ordersPerWindow, settings.windowMs, 'Too many orders from this network. Please wait a few minutes.'),
     lookups: limiter(settings.lookupsPerWindow, settings.windowMs, 'Too many lookups. Please wait a few minutes.'),
     reports: limiter(settings.reportsPerWindow ?? DEFAULT_REPORTS_PER_WINDOW, settings.windowMs, 'Too many reports from this network. Please wait a few minutes.'),
+    status: limiter(settings.statusPerWindow ?? DEFAULT_STATUS_PER_WINDOW, settings.windowMs, 'Too many requests. Please wait a moment.'),
     payments: limiter(settings.paymentsPerWindow ?? DEFAULT_PAYMENTS_PER_WINDOW, settings.windowMs, 'Too many payment attempts from this network. Please wait a few minutes.'),
     views: limiter(settings.viewsPerWindow ?? DEFAULT_VIEWS_PER_WINDOW, settings.windowMs, 'Too many requests. Please wait a few minutes.'),
   };
