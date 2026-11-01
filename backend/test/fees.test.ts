@@ -9,6 +9,11 @@ import { calculateFees, grossUpKobo, paystackFeeKobo, tierFor, type FeeInput } f
 const FREE = 50;
 const BPS = 300; // 3%
 
+// Paystack waiving its flat fee on small payments is NOT the default (the spec
+// charges 100 naira on every order). These tests keep the waiver logic honest in
+// case the constant is ever switched on after checking Paystack's pricing.
+const WAIVER_ON = { ...PAYSTACK_PRICING, flatFeeWaivedBelowKobo: 250_000 };
+
 const quote = (over: Partial<FeeInput> & Pick<FeeInput, 'baseNaira' | 'feeMode'>) =>
   calculateFees({ paidOrderCount: 0, freeOrders: FREE, platformFeeBps: BPS, ...over });
 
@@ -20,10 +25,15 @@ describe('tierFor: free for the first FREE_ORDERS paid orders', () => {
   it('FREE_ORDERS of 0 means no free period', () => expect(tierFor(0, 0)).toBe('standard'));
 });
 
-describe('paystackFeeKobo: 1.5% + 100 naira, flat fee waived under 2,500, capped at 2,000', () => {
-  it('waives the flat fee just under 2,500 naira', () => {
-    // 249,900 kobo * 1.5% = 3748.5 -> 3749, no flat fee
-    expect(paystackFeeKobo(249_900)).toBe(3749);
+describe('paystackFeeKobo: 1.5% + 100 naira on every payment, capped at 2,000', () => {
+  it('charges the flat fee on every payment by default, even a small one', () => {
+    // 249,900 kobo * 1.5% = 3748.5 -> 3749, + 10,000
+    expect(paystackFeeKobo(249_900)).toBe(13_749);
+    expect(paystackFeeKobo(100_000)).toBe(11_500); // 1,000 naira: 15 + 100
+  });
+  it('can waive the flat fee under 2,500 naira when that setting is switched on', () => {
+    expect(paystackFeeKobo(249_900, WAIVER_ON)).toBe(3749);
+    expect(paystackFeeKobo(250_000, WAIVER_ON)).toBe(13_750);
   });
   it('charges the flat fee from exactly 2,500 naira', () => {
     // 250,000 * 1.5% = 3750, + 10,000
@@ -162,22 +172,22 @@ describe('the 2,000 naira cap', () => {
   });
 });
 
-describe('small orders: the flat fee is waived under 2,500 naira', () => {
-  it('2,000 naira: no flat fee in the service fee, 31 naira', () => {
+describe('small orders', () => {
+  it('2,000 naira by default: the 100 naira is included, service fee 132 naira', () => {
     const q = quote({ baseNaira: 2000, feeMode: 'customer' });
+    expect(q).toMatchObject({ serviceFee: 132, totalNaira: 2132, paystackFeeKobo: 13_198, transactionChargeKobo: 13_200, chopListKeepsKobo: 2 });
+  });
+
+  it('with the waiver switched on, the same order costs 31 naira', () => {
+    const q = quote({ baseNaira: 2000, feeMode: 'customer', paystack: WAIVER_ON });
     expect(q).toMatchObject({ serviceFee: 31, totalNaira: 2031, paystackFeeKobo: 3047, transactionChargeKobo: 3100, chopListKeepsKobo: 53 });
   });
 
-  it('with the waiver switched off (the original formula), the same order costs 132', () => {
-    const q = quote({ baseNaira: 2000, feeMode: 'customer', paystack: { ...PAYSTACK_PRICING, flatFeeWaivedBelowKobo: 0 } });
-    expect(q.serviceFee).toBe(132);
-  });
-
-  it('ChopList is never short when rounding carries the total across 2,500 naira', () => {
+  it('with the waiver on, ChopList is never short when rounding carries the total across 2,500 naira', () => {
     // The trap: a total worked out as "under 2,500, no flat fee" can round up to
     // exactly 2,500, where Paystack does charge it. Walk every base around it.
     for (let base = 2300; base <= 2600; base += 1) {
-      const q = quote({ baseNaira: base, feeMode: 'customer' });
+      const q = quote({ baseNaira: base, feeMode: 'customer', paystack: WAIVER_ON });
       expect(q.chopListKeepsKobo, `base ${base}`).toBeGreaterThanOrEqual(q.platformFeeKobo);
       expect(q.sellerReceivesKobo).toBe(base * 100);
     }

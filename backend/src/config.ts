@@ -112,9 +112,10 @@ export const PAYSTACK_PRICING = {
   rateBps: 150,
   // Plus a flat 100 naira...
   flatFeeKobo: 10_000,
-  // ...which Paystack waives when the amount charged is under 2,500 naira.
-  // Set to 0 to charge the flat fee on every order.
-  flatFeeWaivedBelowKobo: 250_000,
+  // ...charged on every order, as specified. Paystack may waive it on small
+  // payments (we believe under 2,500 naira, UNVERIFIED): set this to 250_000 only
+  // after checking, and the calculator then quotes small orders lower.
+  flatFeeWaivedBelowKobo: 0,
   // The fee never exceeds 2,000 naira.
   capKobo: 200_000,
 } as const;
