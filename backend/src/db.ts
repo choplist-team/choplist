@@ -5,9 +5,13 @@ import { EventLogModel } from './models/event-log.js';
 import { MenuViewDailyModel } from './models/menu-view-daily.js';
 import { MissingOrderReportModel } from './models/missing-order-report.js';
 import { OrderModel } from './models/order.js';
+import { PaymentModel } from './models/payment.js';
 import { SellerModel } from './models/seller.js';
 
-const models = [SellerModel, MenuModel, OrderModel, EventLogModel, AdminAuditModel, MenuViewDailyModel, MissingOrderReportModel];
+// Every model whose indexes must exist before the first request. Exported so the
+// tests build exactly this set: a model missing here would silently have no
+// unique indexes in production (autoIndex is off).
+export const models = [SellerModel, MenuModel, OrderModel, EventLogModel, AdminAuditModel, MenuViewDailyModel, MissingOrderReportModel, PaymentModel];
 
 export async function connectDb(uri: string): Promise<void> {
   await mongoose.connect(uri, {

@@ -13,6 +13,16 @@ export function isOrderStatus(value: string): value is OrderStatus {
   return (ORDER_STATUSES as readonly string[]).includes(value);
 }
 
+// transfer: the customer pays the seller's bank account and the seller marks the
+// order paid by hand. paystack: paid through Paystack and marked paid by the
+// webhook.
+export const PAYMENT_METHODS = ['transfer', 'paystack'] as const;
+export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
+
+export function orderPaymentMethod(order: { paymentMethod?: string | null }): PaymentMethod {
+  return order.paymentMethod === 'paystack' ? 'paystack' : 'transfer';
+}
+
 // "CL-" plus 5 characters with no 0/O/1/I, so a customer reading it out on
 // WhatsApp can't confuse them.
 export const REF_PATTERN = /^CL-[2-9A-HJ-NP-Z]{5}$/;
@@ -90,6 +100,22 @@ const orderSchema = new Schema(
     deliveryCodeResets: { type: Number, default: 0, min: 0 },
     // SHA-256 of the key given to the customer when they ordered. Never the key.
     accessKeyHash: { type: String, select: false },
+
+    // How this order is paid. Orders from before Paystack have no value and are
+    // transfers (see orderPaymentMethod()).
+    paymentMethod: { type: String, enum: PAYMENT_METHODS, default: 'transfer' },
+    // Extra the customer pays on top of `total` (whole naira) so the seller still
+    // receives the full `total`. Set when a Paystack payment is started, only in
+    // the seller's "customer pays fees" mode; 0 otherwise. The amount to pay is
+    // total + serviceFee.
+    serviceFee: { type: Number, default: 0, min: 0, validate: { validator: Number.isInteger, message: '{PATH} must be a whole number' } },
+    // The fee quoted when payment was started, frozen here so later changes to
+    // FREE_ORDERS or PLATFORM_FEE_BPS never rewrite an order that already has a
+    // price. Kobo (100 kobo = 1 naira) because a percentage of an order is not
+    // always a whole naira. paystackFeeKobo is our ESTIMATE of Paystack's charge.
+    platformFeeBps: { type: Number, min: 0, validate: { validator: Number.isInteger, message: '{PATH} must be a whole number' } },
+    platformFeeKobo: { type: Number, min: 0, validate: { validator: Number.isInteger, message: '{PATH} must be a whole number' } },
+    paystackFeeKobo: { type: Number, min: 0, validate: { validator: Number.isInteger, message: '{PATH} must be a whole number' } },
 
     // Hash of phone + menu + items (orders/fingerprint.ts). Missing on orders
     // placed before it existed; the backfill script fills it in.

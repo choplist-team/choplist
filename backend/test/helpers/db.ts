@@ -1,11 +1,5 @@
 import mongoose from 'mongoose';
-import { MenuModel } from '../../src/models/menu.js';
-import { AdminAuditModel } from '../../src/models/admin-audit.js';
-import { EventLogModel } from '../../src/models/event-log.js';
-import { MenuViewDailyModel } from '../../src/models/menu-view-daily.js';
-import { MissingOrderReportModel } from '../../src/models/missing-order-report.js';
-import { OrderModel } from '../../src/models/order.js';
-import { SellerModel } from '../../src/models/seller.js';
+import { models } from '../../src/db.js';
 
 // Database tests run only when MONGO_URI_TEST is set, e.g.
 //   mongodb://127.0.0.1:27018/choplist_test
@@ -24,9 +18,7 @@ export async function connectTestDb(name: string): Promise<void> {
     throw new Error(`Refusing to drop "${mongoose.connection.name}": not a *_test database`);
   }
   await mongoose.connection.dropDatabase();
-  await Promise.all(
-    [SellerModel, MenuModel, OrderModel, EventLogModel, AdminAuditModel, MenuViewDailyModel, MissingOrderReportModel].map((model) => model.createIndexes()),
-  );
+  await Promise.all(models.map((model) => model.createIndexes()));
 }
 
 export async function disconnectTestDb(): Promise<void> {

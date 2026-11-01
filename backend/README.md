@@ -31,6 +31,10 @@ You need Node 20.19 or newer, a MongoDB database, and a Clerk application.
    | `CLERK_PUBLISHABLE_KEY` | Same page, starts with `pk_` |
    | `ALLOWED_ORIGINS` | Frontend origins, comma separated, no trailing slash (`http://localhost:5173`) |
    | `PORT` | Defaults to 5000 |
+   | `FREE_ORDERS` | Optional (default 50). A seller's first N paid orders have no ChopList fee |
+   | `PLATFORM_FEE_BPS` | Optional (default 300 = 3%). ChopList's fee after the free orders, in basis points (max 2000) |
+   | `PAYSTACK_SECRET_KEY` | Optional. Paystack secret key (`sk_test_...` for now). Blank = Paystack payments off, bank transfer only |
+   | `PAYSTACK_CALLBACK_URL` | Optional. Frontend page Paystack returns the customer to after paying |
    | `ADMIN_CLERK_USER_IDS` | Optional. Clerk user ids (comma separated) allowed to use `/api/admin`. Empty = no admins |
    | `TRUST_PROXY_HOPS` | Proxies in front of the API, default 1. Leave alone locally. On Render see "Deploying on Render" |
    | `MONGO_URI_TEST` | Only for tests, see below |
