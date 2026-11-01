@@ -13,6 +13,24 @@ export function isSellerActive(seller: { status?: string | null }): boolean {
   return !seller.status || seller.status === 'active';
 }
 
+export const FEE_MODES = ['customer', 'seller'] as const;
+export type FeeMode = (typeof FEE_MODES)[number];
+
+// Sellers created before the payment fields existed have none of them in the
+// database (a schema default only applies to NEW documents, and lean() queries
+// skip defaults entirely). Code reads these three through the helpers so an old
+// seller behaves exactly like a new one: customer pays the fee, no paid orders,
+// payments not ready.
+export function sellerFeeMode(seller: { feeMode?: string | null }): FeeMode {
+  return seller.feeMode === 'seller' ? 'seller' : 'customer';
+}
+export function sellerPaidOrderCount(seller: { paidOrderCount?: number | null }): number {
+  return seller.paidOrderCount ?? 0;
+}
+export function sellerPaymentsReady(seller: { paymentsReady?: boolean | null; paystackSubaccountCode?: string | null }): boolean {
+  return seller.paymentsReady === true && Boolean(seller.paystackSubaccountCode);
+}
+
 // Lowercase words joined by single hyphens, e.g. "mama-titi-kitchen".
 export const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -64,6 +82,21 @@ const sellerSchema = new Schema(
     // Last time this seller used a seller route. Written at most once per
     // LAST_ACTIVE_INTERVAL_MS (see auth/middleware.ts).
     lastActiveAt: Date,
+
+    // ---- Paystack payments (see payments/) ----
+    // Who pays Paystack's processing fee and ChopList's fee: the customer (shown
+    // as a service fee line) or the seller (taken out of what they receive).
+    // A seller setting; the customer never chooses.
+    feeMode: { type: String, enum: FEE_MODES, required: true, default: 'customer' },
+    // Orders this seller has been paid for through Paystack. Only the webhook
+    // changes it, and only with $inc, so two payments arriving together both count.
+    paidOrderCount: { type: Number, required: true, default: 0, min: 0 },
+    // Paystack's code (ACCT_...) for this seller's settlement account. Paystack
+    // pays the seller directly; ChopList never holds the money.
+    paystackSubaccountCode: { type: String, trim: true, maxlength: 40 },
+    // True only while the seller has a working subaccount. The pay route refuses
+    // otherwise, and manual bank transfer keeps working.
+    paymentsReady: { type: Boolean, required: true, default: false },
   },
   { timestamps: true },
 );

@@ -61,6 +61,32 @@ const EnvSchema = z.object({
       ),
     ),
 
+  // ---- Pricing (see payments/fees.ts) ----
+  // A seller's first FREE_ORDERS paid orders carry no ChopList fee. From the
+  // next one the fee is PLATFORM_FEE_BPS basis points of the order (100 bps = 1%,
+  // so 300 = 3%). Changing these affects NEW payments only: each order keeps the
+  // fee it was quoted.
+  FREE_ORDERS: z.coerce.number().int().min(0).max(100_000).default(50),
+  // Capped at 20% so a slipped zero (300 typed as 3000) is refused at startup.
+  PLATFORM_FEE_BPS: z.coerce.number().int().min(0).max(2000).default(300),
+
+  // ---- Paystack (card/transfer payments with the seller paid directly) ----
+  // Optional: without a key the API runs as before with manual bank transfer
+  // only, and the pay route answers "payments unavailable". A blank value in
+  // .env counts as not set. Error messages never repeat the value.
+  PAYSTACK_SECRET_KEY: z
+    .string()
+    .optional()
+    .transform((raw) => (raw && raw.trim() !== '' ? raw.trim() : undefined))
+    .pipe(z.string().startsWith('sk_', 'PAYSTACK_SECRET_KEY must start with sk_').optional()),
+  // Where Paystack sends the customer after paying: a page on the frontend,
+  // e.g. https://choplistafrica.com/pay/done. The order reference is added to it.
+  PAYSTACK_CALLBACK_URL: z
+    .string()
+    .optional()
+    .transform((raw) => (raw && raw.trim() !== '' ? raw.trim() : undefined))
+    .pipe(z.url({ protocol: /^https?$/, error: 'PAYSTACK_CALLBACK_URL must be an http(s) URL' }).optional()),
+
   // From the Clerk dashboard (API keys). The publishable key is the same value
   // the frontend uses as VITE_CLERK_PUBLISHABLE_KEY.
   CLERK_SECRET_KEY: z
@@ -72,6 +98,33 @@ const EnvSchema = z.object({
 });
 
 export type Config = z.infer<typeof EnvSchema>;
+
+// Paystack's own charge on a local (Nigerian) payment, kept apart from the env
+// settings above because it is Paystack's price, not ours. Amounts are in kobo
+// (100 kobo = 1 naira) and rates in basis points.
+//
+// !! These are NOT read from Paystack. They are our copy of their published
+// !! pricing and MUST be re-checked against https://paystack.com/pricing before
+// !! going live and whenever Paystack announces a change. If they are wrong the
+// !! customer is quoted the wrong service fee, or ChopList absorbs the gap.
+export const PAYSTACK_PRICING = {
+  // 1.5% of the amount charged.
+  rateBps: 150,
+  // Plus a flat 100 naira...
+  flatFeeKobo: 10_000,
+  // ...which Paystack waives when the amount charged is under 2,500 naira.
+  // Set to 0 to charge the flat fee on every order.
+  flatFeeWaivedBelowKobo: 250_000,
+  // The fee never exceeds 2,000 naira.
+  capKobo: 200_000,
+} as const;
+
+export type PaystackPricing = {
+  readonly rateBps: number;
+  readonly flatFeeKobo: number;
+  readonly flatFeeWaivedBelowKobo: number;
+  readonly capKobo: number;
+};
 
 // Pure: takes the env as an argument and throws on bad input, so tests can call
 // it with any object. server.ts calls it once with process.env and exits on error.

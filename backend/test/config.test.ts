@@ -53,6 +53,68 @@ describe('parseEnv', () => {
     expect(() => parseEnv({ ...valid, ALLOWED_ORIGINS: 'https://ChopListAfrica.com' })).toThrow(/is not an origin/);
   });
 
+  describe('pricing and Paystack settings', () => {
+    it('defaults to 50 free orders and a 3% fee, with Paystack off', () => {
+      const config = parseEnv(valid);
+      expect(config.FREE_ORDERS).toBe(50);
+      expect(config.PLATFORM_FEE_BPS).toBe(300);
+      expect(config.PAYSTACK_SECRET_KEY).toBeUndefined();
+      expect(config.PAYSTACK_CALLBACK_URL).toBeUndefined();
+    });
+
+    it('reads overrides from the environment', () => {
+      const config = parseEnv({ ...valid, FREE_ORDERS: '20', PLATFORM_FEE_BPS: '250' });
+      expect(config.FREE_ORDERS).toBe(20);
+      expect(config.PLATFORM_FEE_BPS).toBe(250);
+    });
+
+    it('allows a fee of 0 and no free period', () => {
+      const config = parseEnv({ ...valid, FREE_ORDERS: '0', PLATFORM_FEE_BPS: '0' });
+      expect(config.FREE_ORDERS).toBe(0);
+      expect(config.PLATFORM_FEE_BPS).toBe(0);
+    });
+
+    it('refuses a slipped zero (30% typed for 3%), a negative or a fractional value', () => {
+      expect(() => parseEnv({ ...valid, PLATFORM_FEE_BPS: '3000' })).toThrow(/PLATFORM_FEE_BPS/);
+      expect(() => parseEnv({ ...valid, PLATFORM_FEE_BPS: '-1' })).toThrow(/PLATFORM_FEE_BPS/);
+      expect(() => parseEnv({ ...valid, PLATFORM_FEE_BPS: '2.5' })).toThrow(/PLATFORM_FEE_BPS/);
+      expect(() => parseEnv({ ...valid, FREE_ORDERS: '-5' })).toThrow(/FREE_ORDERS/);
+      expect(() => parseEnv({ ...valid, FREE_ORDERS: 'fifty' })).toThrow(/FREE_ORDERS/);
+    });
+
+    it('treats a blank PAYSTACK_SECRET_KEY (as in .env.example) as not set', () => {
+      expect(parseEnv({ ...valid, PAYSTACK_SECRET_KEY: '' }).PAYSTACK_SECRET_KEY).toBeUndefined();
+      expect(parseEnv({ ...valid, PAYSTACK_SECRET_KEY: '   ' }).PAYSTACK_SECRET_KEY).toBeUndefined();
+    });
+
+    it('accepts a key that starts with sk_', () => {
+      expect(parseEnv({ ...valid, PAYSTACK_SECRET_KEY: 'sk_test_dummy' }).PAYSTACK_SECRET_KEY).toBe('sk_test_dummy');
+    });
+
+    it('rejects a key that does not start with sk_ WITHOUT repeating it in the error', () => {
+      // A publishable key pasted by mistake: refuse it, and never print it.
+      const pasted = 'pk_live_ThisMustNeverAppearInALog123';
+      let message = '';
+      try {
+        parseEnv({ ...valid, PAYSTACK_SECRET_KEY: pasted });
+      } catch (err) {
+        message = err instanceof Error ? err.message : String(err);
+      }
+      expect(message).toMatch(/PAYSTACK_SECRET_KEY must start with sk_/);
+      expect(message).not.toContain(pasted);
+      expect(message).not.toContain('ThisMustNeverAppear');
+    });
+
+    it('validates PAYSTACK_CALLBACK_URL as an http(s) URL, and treats blank as not set', () => {
+      expect(parseEnv({ ...valid, PAYSTACK_CALLBACK_URL: 'https://choplistafrica.com/pay/done' }).PAYSTACK_CALLBACK_URL).toBe(
+        'https://choplistafrica.com/pay/done',
+      );
+      expect(parseEnv({ ...valid, PAYSTACK_CALLBACK_URL: '' }).PAYSTACK_CALLBACK_URL).toBeUndefined();
+      expect(() => parseEnv({ ...valid, PAYSTACK_CALLBACK_URL: 'choplistafrica.com/pay' })).toThrow(/PAYSTACK_CALLBACK_URL/);
+      expect(() => parseEnv({ ...valid, PAYSTACK_CALLBACK_URL: 'javascript:alert(1)' })).toThrow(/PAYSTACK_CALLBACK_URL/);
+    });
+  });
+
   it('rejects an empty ALLOWED_ORIGINS list', () => {
     expect(() => parseEnv({ ...valid, ALLOWED_ORIGINS: ' , ' })).toThrow(/at least one origin/);
   });
