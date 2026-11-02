@@ -8,7 +8,7 @@ import { useSaveSellerProfile } from "@/hooks/useSaveSellerProfile";
 import { FieldError } from "@/components/field-error";
 import { hasErrors, validateProfile } from "@/lib/validation";
 import SuspendedAccount from "@/components/seller/SuspendedAccount";
-import { useSellerBanks } from "@/hooks/useSellerBanks";
+import { useSellersBanks } from "@/hooks/useSellersBanks";
 
 export default function SellerOnboarding() {
   const { isLoaded, isSignedIn } = useAuth();
@@ -25,9 +25,15 @@ export default function SellerOnboarding() {
   const {
     data: banks,
     isPending: isLoadingBanks,
-    isError: banksUnavailable,
+    isError: banksError,
+    error: banksErrorDetails,
     refetch: refetchBanks,
-  } = useSellerBanks();
+  } = useSellersBanks();
+
+  const banksUnavailable =
+    banksError &&
+    (banksErrorDetails?.status === 503 ||
+      banksErrorDetails?.code === "PAYMENTS_UNAVAILABLE");
 
   const [formData, setFormData] = useState({
     businessName: "",
@@ -302,7 +308,7 @@ export default function SellerOnboarding() {
                   name="bankCode"
                   value={formData.bankCode}
                   onChange={(event) => {
-                    const selectedBank = banks.find(
+                    const selectedBank = banks.banks.find(
                       (bank) => bank.code === event.target.value
                     );
 
@@ -323,7 +329,7 @@ export default function SellerOnboarding() {
                 >
                   <option value="">Select your bank</option>
 
-                  {banks.map((bank) => (
+                  {banks.banks.map((bank) => (
                     <option key={bank.code} value={bank.code}>
                       {bank.name}
                     </option>
