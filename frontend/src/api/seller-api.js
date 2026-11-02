@@ -4,6 +4,10 @@ export const getCurrentSeller = (getToken) => {
   return apiRequest("/sellers/me", { requiresAuth: true }, getToken);
 };
 
+export const getSellerBanks = (getToken) => {
+  return apiRequest("/sellers/banks", { requiresAuth: true }, getToken);
+};
+
 export const saveSellerProfile = (profile, getToken) => {
   return apiRequest(
     "/sellers/me",
@@ -113,12 +117,11 @@ export const confirmDelivery = (ref, code, getToken) => {
     {
       method: "PATCH",
       requiresAuth: true,
-      body: {code}
+      body: { code },
     },
     getToken
   );
 };
-
 
 export const resetDeliveryCode = (ref, getToken) => {
   return apiRequest(
@@ -130,7 +133,6 @@ export const resetDeliveryCode = (ref, getToken) => {
     getToken
   );
 };
-
 
 export const getMenuPrepSheet = (id, getToken, paidOnly = false) => {
   return apiRequest(

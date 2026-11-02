@@ -98,7 +98,14 @@ export const router = createBrowserRouter([
 
       {
         path: "order-lookup/missing",
-        lazy: lazyPage(() => import("../pages/customer/ReportMissingOrder.jsx")),
+        lazy: lazyPage(() =>
+          import("../pages/customer/ReportMissingOrder.jsx")
+        ),
+      },
+
+      {
+        path: "paystack-return",
+        lazy: lazyPage(() => import("../pages/customer/PaystackReturn.jsx")),
       },
 
       // Admin sign-in (public). There is no admin sign-up: admins are the
@@ -118,7 +125,9 @@ export const router = createBrowserRouter([
             children: [
               {
                 index: true,
-                lazy: lazyPage(() => import("../pages/admin/AdminOverview.jsx")),
+                lazy: lazyPage(() =>
+                  import("../pages/admin/AdminOverview.jsx")
+                ),
               },
               {
                 path: "sellers",
@@ -126,7 +135,9 @@ export const router = createBrowserRouter([
               },
               {
                 path: "sellers/:sellerId",
-                lazy: lazyPage(() => import("../pages/admin/SellerDetails.jsx")),
+                lazy: lazyPage(() =>
+                  import("../pages/admin/SellerDetails.jsx")
+                ),
               },
               {
                 path: "orders",
@@ -134,7 +145,9 @@ export const router = createBrowserRouter([
               },
               {
                 path: "analytics",
-                lazy: lazyPage(() => import("../pages/admin/AdminAnalytics.jsx")),
+                lazy: lazyPage(() =>
+                  import("../pages/admin/AdminAnalytics.jsx")
+                ),
               },
 
               {

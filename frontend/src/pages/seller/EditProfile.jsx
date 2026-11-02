@@ -10,6 +10,7 @@ import SellerBottomNav from "@/components/seller/BottomNav";
 const emptyProfile = {
   businessName: "",
   phone: "",
+  email: "",
   bankName: "",
   accountNumber: "",
   accountName: "",
@@ -20,6 +21,7 @@ function getProfileForm(seller) {
   return {
     businessName: seller?.businessName ?? "",
     phone: seller?.phone ?? "",
+    email: seller?.email ?? "",
     bankName: seller?.payment?.bankName ?? "",
     accountNumber: seller?.payment?.accountNumber ?? "",
     accountName: seller?.payment?.accountName ?? "",
@@ -134,6 +136,7 @@ function EditProfileForm({ seller }) {
     const profile = {
       businessName: formData.businessName.trim(),
       phone: formData.phone.trim(),
+      email: formData.email.trim(),
       payment: {
         bankName: formData.bankName.trim(),
         accountNumber: formData.accountNumber,
@@ -218,6 +221,16 @@ function EditProfileForm({ seller }) {
               placeholder="0803 123 4567"
               type="tel"
               required
+            />
+
+            <FormField
+              label="email"
+              name="email"
+              value={formData.email}
+              onChange={handleChange}
+              error={errors.email}
+              placeholder="mama-t-kitchen@gmail.com"
+              type="email"
             />
           </div>
 

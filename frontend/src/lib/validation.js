@@ -59,7 +59,7 @@ export function checkNigerianPhone(value) {
   return "";
 }
 
-export function validateProfile(formData) {
+export function validateProfile(formData, { bankListUnavailable = false } = {}) {
   const errors = {
     businessName: checkText(formData.businessName, {
       label: "Business name",
@@ -68,26 +68,35 @@ export function validateProfile(formData) {
       emptyMessage: "Enter your business name.",
     }),
     phone: checkNigerianPhone(formData.phone),
-    bankName: checkText(formData.bankName, {
-      label: "Bank name",
-      min: 2,
-      max: 60,
-      emptyMessage: "Enter the name of your bank, e.g. GTBank.",
-    }),
-    accountName: checkText(formData.accountName, {
+    bankName: "",
+    accountName: "",
+  };
+
+  // Bank details are optional only when the bank list is unavailable.
+  if (!bankListUnavailable) {
+    errors.bankName = formData.bankCode
+      ? ""
+      : checkText(formData.bankName, {
+          label: "Bank name",
+          min: 2,
+          max: 60,
+          emptyMessage: "Select your bank.",
+        });
+
+    errors.accountName = checkText(formData.accountName, {
       label: "Account name",
       min: 2,
       max: 80,
       emptyMessage: "Enter the name on your bank account.",
-    }),
-  };
+    });
 
-  if (!formData.accountNumber) {
-    errors.accountNumber = "Enter your bank account number.";
-  } else if (!/^\d+$/.test(formData.accountNumber)) {
-    errors.accountNumber = "Account number can only contain digits.";
-  } else if (formData.accountNumber.length !== 10) {
-    errors.accountNumber = `Account number must be exactly 10 digits. You entered ${formData.accountNumber.length}.`;
+    if (!formData.accountNumber) {
+      errors.accountNumber = "Enter your bank account number.";
+    } else if (!/^\d+$/.test(formData.accountNumber)) {
+      errors.accountNumber = "Account number can only contain digits.";
+    } else if (formData.accountNumber.length !== 10) {
+      errors.accountNumber = `Account number must be exactly 10 digits. You entered ${formData.accountNumber.length}.`;
+    }
   }
 
   const slug = formData.slug.trim().toLowerCase();

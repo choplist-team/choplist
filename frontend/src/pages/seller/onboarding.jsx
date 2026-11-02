@@ -8,6 +8,7 @@ import { useSaveSellerProfile } from "@/hooks/useSaveSellerProfile";
 import { FieldError } from "@/components/field-error";
 import { hasErrors, validateProfile } from "@/lib/validation";
 import SuspendedAccount from "@/components/seller/SuspendedAccount";
+import { useSellerBanks } from "@/hooks/useSellerBanks";
 
 export default function SellerOnboarding() {
   const { isLoaded, isSignedIn } = useAuth();
@@ -21,11 +22,19 @@ export default function SellerOnboarding() {
   } = useCurrentSeller();
 
   const saveProfile = useSaveSellerProfile();
+  const {
+    data: banks,
+    isPending: isLoadingBanks,
+    isError: banksUnavailable,
+    refetch: refetchBanks,
+  } = useSellerBanks();
 
   const [formData, setFormData] = useState({
     businessName: "",
     phone: "",
+    email: "",
     bankName: "",
+    bankCode: "",
     accountNumber: "",
     accountName: "",
     slug: "",
@@ -58,8 +67,9 @@ export default function SellerOnboarding() {
     event.preventDefault();
     setValidationError("");
 
-    const errors = validateProfile(formData);
-    setFieldErrors(errors);
+    const errors = validateProfile(formData, {
+      bankListUnavailable: banksUnavailable,
+    });
 
     if (hasErrors(errors)) {
       setValidationError("Please fix the highlighted fields below.");
@@ -69,8 +79,10 @@ export default function SellerOnboarding() {
     const profile = {
       businessName: formData.businessName.trim(),
       phone: formData.phone.trim(),
+      email: formData.email.trim(),
       payment: {
         bankName: formData.bankName.trim(),
+        bankCode: formData.bankCode || undefined,
         accountNumber: formData.accountNumber,
         accountName: formData.accountName.trim(),
       },
@@ -239,6 +251,30 @@ export default function SellerOnboarding() {
 
               <FieldError id="phone-error" message={fieldErrors.phone} />
             </div>
+
+            <div className="space-y-2">
+              <label
+                htmlFor="email"
+                className="text-sm font-medium text-foreground"
+              >
+                email
+              </label>
+
+              <input
+                id="email"
+                name="email"
+                type="email"
+                autoComplete="email"
+                placeholder="mama-t-kitchen@gmail.com"
+                value={formData.email}
+                onChange={handleChange}
+                aria-invalid={Boolean(fieldErrors.email)}
+                aria-describedby={fieldErrors.email ? "email-error" : undefined}
+                className="w-full rounded-lg border border-border bg-background px-3 py-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-primary"
+              />
+
+              <FieldError id="email-error" message={fieldErrors.email} />
+            </div>
           </div>
 
           <div className="space-y-4 rounded-xl border border-border bg-card p-4 md:p-5">
@@ -248,27 +284,69 @@ export default function SellerOnboarding() {
 
             <div className="space-y-2">
               <label
-                htmlFor="bankName"
+                htmlFor="bankCode"
                 className="text-sm font-medium text-foreground"
               >
-                Bank name
+                Bank
               </label>
 
-              <input
-                id="bankName"
-                name="bankName"
-                type="text"
-                autoComplete="off"
-                placeholder="GTBank"
-                value={formData.bankName}
-                onChange={handleChange}
-                required
-                aria-invalid={Boolean(fieldErrors.bankName)}
-                aria-describedby={
-                  fieldErrors.bankName ? "bankName-error" : undefined
-                }
-                className="w-full rounded-lg border border-border bg-background px-3 py-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-primary"
-              />
+              {isLoadingBanks && (
+                <p className="text-sm text-muted-foreground">
+                  Loading banks...
+                </p>
+              )}
+
+              {banks && !banksUnavailable && (
+                <select
+                  id="bankCode"
+                  name="bankCode"
+                  value={formData.bankCode}
+                  onChange={(event) => {
+                    const selectedBank = banks.find(
+                      (bank) => bank.code === event.target.value
+                    );
+
+                    setFormData((previous) => ({
+                      ...previous,
+                      bankCode: selectedBank?.code ?? "",
+                      bankName: selectedBank?.name ?? "",
+                    }));
+
+                    setFieldErrors((previous) => ({
+                      ...previous,
+                      bankName: "",
+                    }));
+
+                    setValidationError("");
+                  }}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  <option value="">Select your bank</option>
+
+                  {banks.map((bank) => (
+                    <option key={bank.code} value={bank.code}>
+                      {bank.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              {banksUnavailable && (
+                <div className="rounded-lg border border-border bg-background p-3">
+                  <p className="text-sm text-muted-foreground">
+                    The bank list is temporarily unavailable. You can continue
+                    setting up your shop and add your bank details later.
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={() => refetchBanks()}
+                    className="mt-3 inline-flex items-center justify-center rounded-lg border border-border bg-muted px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-primary hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Try loading banks again
+                  </button>
+                </div>
+              )}
 
               <FieldError id="bankName-error" message={fieldErrors.bankName} />
             </div>
