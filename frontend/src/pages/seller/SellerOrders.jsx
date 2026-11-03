@@ -125,7 +125,19 @@ function OrderCard({
 
         <OrderStatus status={order.status} />
       </div>
+      <div className="mt-3 flex items-center justify-between gap-3">
+        <span className="text-sm text-muted-foreground">Payment method</span>
 
+        {order.paymentMethod === "paystack" ? (
+          <span className="rounded-full bg-soft-green px-3 py-1 text-xs font-semibold text-primary">
+            Paid online
+          </span>
+        ) : (
+          <span className="rounded-full bg-muted px-3 py-1 text-xs font-semibold text-muted-foreground">
+            Bank transfer
+          </span>
+        )}
+      </div>
       <div className="mt-4 border-t border-border pt-4">
         <h3 className="font-semibold text-foreground">
           {order.customer?.name ?? "Customer"}

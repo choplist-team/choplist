@@ -10,8 +10,8 @@ export default defineConfig({
     VitePWA({
       registerType: "autoUpdate",
       manifest: {
-        name: "Choplist",
-        short_name: "Choplist",
+        name: "Choplist Africa",
+        short_name: "Choplist Africa",
         description: "Simple weekly food ordering for local food businesses.",
         theme_color: "#2f6348",
         background_color: "#f8f8f3",

@@ -7,6 +7,7 @@ import {
   CookingPot,
   Truck,
   UserRound,
+  Wallet,
   UserRoundPen,
   LogOut,
   ChevronUp,
@@ -35,7 +36,15 @@ const navigationItems = [
     path: "/seller/delivery",
     icon: Truck,
   },
+  {
+    label: "Payment Settings",
+    path: "/seller/payment-settings",
+    icon: Wallet,
+  },
 ];
+const mobileNavigationItems = navigationItems.filter(
+  ({ label }) => label !== "Payment Settings"
+);
 
 export default function SellerBottomNav() {
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
@@ -127,7 +136,7 @@ export default function SellerBottomNav() {
 
       <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-border bg-card lg:hidden">
         <div className="mx-auto grid w-full max-w-[420px] grid-cols-5 px-2 py-2 md:max-w-xl">
-          {navigationItems.map(({ label, path, icon: Icon }) => (
+          {mobileNavigationItems.map(({ label, path, icon: Icon }) => (
             <NavLink
               key={path}
               to={path}
@@ -157,6 +166,19 @@ export default function SellerBottomNav() {
                 className="absolute bottom-full right-0 mb-3 w-56 overflow-hidden rounded-xl border border-border bg-card p-1 shadow-lg"
                 role="menu"
               >
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setIsAccountMenuOpen(false);
+                    navigate("/seller/payment-settings");
+                  }}
+                  className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-medium text-foreground transition-colors hover:bg-muted"
+                >
+                  <Wallet className="h-4 w-4" />
+                  Payment Settings
+                </button>
+
                 <button
                   type="button"
                   role="menuitem"
