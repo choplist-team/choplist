@@ -165,3 +165,34 @@ export const getMenuDeliveryList = (
     getToken
   );
 };
+
+export const getSellerPayments = (getToken) => {
+  return apiRequest(
+    "/sellers/me/payments",
+    { requiresAuth: true },
+    getToken
+  );
+};
+
+export const retrySellerPaymentsSetup = (getToken) => {
+  return apiRequest(
+    "/sellers/me/payments/retry",
+    {
+      method: "POST",
+      requiresAuth: true,
+    },
+    getToken
+  );
+};
+
+export const updateSellerFeeMode = (feeMode, getToken) => {
+  return apiRequest(
+    "/sellers/me/fee-mode",
+    {
+      method: "PUT",
+      requiresAuth: true,
+      body: { feeMode },
+    },
+    getToken
+  );
+};

@@ -10,6 +10,7 @@ import { useGetMenus } from "@/hooks/useGetMenus";
 import { useOpenMenu } from "@/hooks/use-open-menu";
 import { useCloseMenu } from "@/hooks/use-close-menu";
 import SuspendedAccount from "@/components/seller/SuspendedAccount";
+import BankDetails from "@/components/seller/BankDetails";
 
 const formatPrice = (amount) =>
   new Intl.NumberFormat("en-NG", {
@@ -136,6 +137,8 @@ export default function SellerDashboard() {
 
   const needsProfile =
     sellerError instanceof ApiError && sellerError.code === "PROFILE_REQUIRED";
+
+  const needsBankDetails = Boolean(seller && !seller.payment?.bankCode);
 
   const {
     data: menusData,
@@ -280,6 +283,7 @@ export default function SellerDashboard() {
           </p>
         </section>
 
+        {needsBankDetails && <BankDetails variant="compact" />}
         {needsProfile && (
           <section className="mt-6 rounded-xl border border-border bg-card p-4 md:flex md:items-center md:justify-between md:gap-6 md:p-5">
             <div>

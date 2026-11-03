@@ -47,6 +47,10 @@ export const router = createBrowserRouter([
             lazy: lazyPage(() => import("../pages/seller/EditProfile.jsx")),
           },
           {
+             path: "seller/payment-settings",
+            lazy: lazyPage(() => import("../pages/seller/PaymentSettings.jsx")),
+          },
+          {
             element: <RequireSellerProfile />,
             children: [
               {
