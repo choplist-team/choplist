@@ -7,9 +7,9 @@ export const getShop = async (slug) => {
   // Tell the server the menu was opened (once per session per shop), without
   // waiting for it and without ever letting it fail the page.
   if (shop?.menu && shouldCountView(slug)) {
-    apiRequest(`/public/menu/${encodeURIComponent(slug)}/view`, { method: "POST" }).catch(
-      () => {}
-    );
+    apiRequest(`/public/menu/${encodeURIComponent(slug)}/view`, {
+      method: "POST",
+    }).catch(() => {});
   }
   return shop;
 };
@@ -41,3 +41,25 @@ export const reportMissingOrder = ({ ref, phoneLast4, message }) =>
     method: "POST",
     body: { ref, phoneLast4, message },
   });
+
+// Get the current payment status for an order.
+export const getOrderPaymentStatus = (ref) => {
+  const accessKey = getOrderKey(ref);
+
+  return apiRequest(
+    `/public/orders/${encodeURIComponent(ref)}/payment-status`,
+    {
+      headers: accessKey ? { "X-Order-Key": accessKey } : {},
+    }
+  );
+};
+
+// Start a new Paystack payment attempt.
+export const startOrderPayment = (ref) => {
+  const accessKey = getOrderKey(ref);
+
+  return apiRequest(`/public/orders/${encodeURIComponent(ref)}/pay`, {
+    method: "POST",
+    headers: accessKey ? { "X-Order-Key": accessKey } : {},
+  });
+};
