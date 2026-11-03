@@ -39,7 +39,7 @@ export default function PaymentSettings() {
         <BankDetails variant="full" />
 
         <section className="mt-6">
-          <div className="space-y-4 rounded-xl border border-border bg-background p-4">
+          <div className="space-y-4 rounded-xl border border-border bg-card p-4">
             {isPaymentsPending ? (
               <p className="text-sm text-muted-foreground">
                 Loading payment settings...
