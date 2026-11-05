@@ -33,6 +33,8 @@ export function toSellerOrder(order: OrderDoc) {
     payment: orderPaymentView(order),
     paidAt: order.paidAt ?? null,
     cancelledAt: order.cancelledAt ?? null,
+    // 'expired' when the order was cancelled for not being paid in time; null otherwise.
+    cancelReason: order.cancelReason ?? null,
     outForDeliveryAt: order.outForDeliveryAt ?? null,
     deliveredAt: order.deliveredAt ?? null,
     createdAt: order.createdAt,

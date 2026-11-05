@@ -50,6 +50,25 @@ const paymentSchema = new Schema(
     subaccountCode: { type: String, required: true },
 
     paidAt: Date,
+
+    // Set by an admin once they have refunded this payment by hand in the Paystack
+    // dashboard (ChopList does not call Paystack's refund API). Whether a payment
+    // NEEDS a refund is worked out from the data (admin/refunds.ts), never stored,
+    // so a crash cannot leave one unflagged; this only records that it was dealt with.
+    refund: {
+      type: new Schema(
+        {
+          refundedAt: { type: Date, required: true },
+          refundedBy: { type: String, required: true }, // the admin's Clerk user id
+          note: { type: String, trim: true, maxlength: 300 },
+        },
+        { _id: false },
+      ),
+    },
+
+    // When the status route last asked Paystack about this payment, so a customer
+    // polling every few seconds costs at most one Paystack call per interval.
+    lastCheckedAt: Date,
   },
   { timestamps: true },
 );

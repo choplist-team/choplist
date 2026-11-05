@@ -3,9 +3,11 @@ import { z } from 'zod';
 import { AppError } from '../errors.js';
 import { recordAdminAction } from '../events/log.js';
 import { MenuModel } from '../models/menu.js';
-import { OrderModel, REF_PATTERN } from '../models/order.js';
+import { OrderModel, REF_PATTERN, orderPaymentMethod } from '../models/order.js';
+import { PaymentModel } from '../models/payment.js';
 import { SellerModel } from '../models/seller.js';
 import { DUPLICATE_WINDOW_MS } from '../orders/fingerprint.js';
+import { orderPaymentView, paymentHistory } from '../orders/payment-state.js';
 import { statusFilterSchema } from '../orders/status-filter.js';
 import { dateRangeFilter, dateRangeQuery, escapeRegex, maskPhone, objectIdText, paginationQuery, toPagination } from './query.js';
 
@@ -182,7 +184,7 @@ export async function orderDetail(input: { ref: string; reveal: boolean; adminId
     await recordAdminAction({ adminId: input.adminId, action: 'order.reveal_phone', targetId: ref });
   }
 
-  const [seller, menu, similar] = await Promise.all([
+  const [seller, menu, similar, history, attempts] = await Promise.all([
     SellerModel.findById(order.sellerId, { businessName: 1, slug: 1 }).lean(),
     MenuModel.findById(order.menuId, { title: 1, cutoffAt: 1 }).lean(),
     order.fingerprint
@@ -201,6 +203,10 @@ export async function orderDetail(input: { ref: string; reveal: boolean; adminId
           .limit(5)
           .lean()
       : [],
+    paymentHistory(order._id),
+    // Every Paystack attempt on this order, newest first. Never the seller's payout
+    // account code or anything about the customer.
+    PaymentModel.find({ orderId: order._id }).sort({ createdAt: -1, _id: -1 }).limit(20).lean(),
   ]);
 
   return {
@@ -209,6 +215,27 @@ export async function orderDetail(input: { ref: string; reveal: boolean; adminId
     total: order.total,
     paymentStatus: paymentStatus(order),
     paymentConfirmedBy: 'seller' as const,
+    // The order's payment record (see docs/api.md, Order payment state), how it is
+    // paid, and why it was cancelled if the seller did not do it.
+    paymentMethod: orderPaymentMethod(order),
+    payment: orderPaymentView(order),
+    cancelReason: order.cancelReason ?? null,
+    // What changed, when, and who caused it (customer, seller or paystack), oldest first.
+    paymentHistory: history,
+    // The Paystack payments on this order. amounts are naira. refund is set once an
+    // admin has recorded refunding it by hand (see /api/admin/refunds).
+    onlinePayments: attempts.map((p) => ({
+      reference: p.reference,
+      status: p.status,
+      amountNaira: p.amountKobo / 100,
+      serviceFee: p.serviceFee ?? 0,
+      platformFeeNaira: p.platformFeeKobo / 100,
+      paystackFeeEstimateNaira: p.paystackFeeKobo / 100,
+      feePayer: p.bearer === 'subaccount' ? ('seller' as const) : ('customer' as const),
+      createdAt: p.createdAt,
+      paidAt: p.paidAt ?? null,
+      refund: p.refund ? { refundedAt: p.refund.refundedAt, refundedBy: p.refund.refundedBy, note: p.refund.note ?? null } : null,
+    })),
     seller: seller ? { id: seller._id.toString(), businessName: seller.businessName, slug: seller.slug } : null,
     menu: menu ? { id: menu._id.toString(), title: menu.title, cutoffAt: menu.cutoffAt } : null,
     lines: order.lines.map((line) => ({ name: line.name, unitPrice: line.unitPrice, qty: line.qty })),

@@ -21,12 +21,13 @@ until the service restarts). All are described in `.env.example`.
 | -------- | ----- |
 | `PAYSTACK_SECRET_KEY` | The **test** secret key from Paystack dashboard > Settings > API Keys & Webhooks. Leave it empty to keep online payments off (bank transfer keeps working) |
 | `PAYSTACK_CALLBACK_URL` | The frontend page Paystack sends the customer back to after paying, e.g. `https://choplistafrica.com/pay/done`. **Agree the page with the frontend team first** |
+| `ORDER_EXPIRY_HOURS` | `48` (optional). Unpaid orders older than this are cancelled and their portions put back on sale; `0` switches it off. See api.md, Expiry. **Agree the number with the team before relying on it** |
 | `PLATFORM_FEE_BPS` | `0` (ChopList takes no cut of each order; it earns from subscriptions). The default is 0, so leaving it unset is the same. Setting it above 0 switches the old tiers back on (`FREE_ORDERS` free orders, then this many basis points) |
 | `SUBSCRIPTION_CALLBACK_URL` | The frontend page Paystack sends a vendor back to after paying a subscription. **Agree the page with the frontend team first**; it is not the customer's page |
 | `SHARE_URL_BASE` | Start of a shop link without the slug, e.g. `https://choplistafrica.com/shop` (optional) |
 | `TRIAL_DAYS` | `7` (optional) |
 | `SUBSCRIPTION_MONTHLY_NAIRA` | `3000` (optional) |
-| `SUBSCRIPTION_QUARTERLY_NAIRA` | **Set this once the team confirms the price.** Until then the server uses the placeholder 8000 and says so in its log on every start |
+| `SUBSCRIPTION_QUARTERLY_NAIRA` | `11000` (optional; this is the default) |
 
 The startup log does not print any of these. If `PAYSTACK_SECRET_KEY` is set but does
 not start with `sk_`, the server refuses to start and says so (without printing the
@@ -110,6 +111,17 @@ Do this after the order run above, with a throwaway seller whose trial you have 
    mode, or what it reports when you verify one. If step 2 fails, send the `payment_*`
    event, not the key.
 
+### Refunds and the lost-webhook fallback
+
+Do these in test mode too, since they have never met real Paystack:
+
+1. **A refund of a split payment.** Pay an order with a test card, have the seller cancel it, and check it appears under
+   `GET /api/admin/refunds` as `due`. Refund it in the Paystack dashboard and note **where Paystack takes the money from** (the
+   seller's subaccount or ChopList's balance). Then mark it refunded in ChopList.
+2. **The fallback.** Pay an order, but temporarily point the Paystack test webhook URL somewhere that does not exist so the
+   webhook cannot arrive. Poll the order's `payment-status`: after about 20 seconds it should turn `paid` on its own. Put the
+   webhook URL back.
+
 ## 4. When something is wrong
 
 Problems are written to the event log, with order references and amounts but never
@@ -134,6 +146,12 @@ same as above (`AMOUNT_MISMATCH`, `NOT_CONFIRMED`, `UNKNOWN_REFERENCE`,
 `PAYSTACK_UNAVAILABLE`, `PAYSTACK_REJECTED`); `VERIFY_FAILED` is still logged as
 `payment_webhook_issue`. A subscription marked `needs_review` is the **vendor's** money
 sitting with Paystack and is not counted on the admin overview: find it in the event log.
+
+Two more event types: `payment_query_raised` (a customer or seller reported a payment problem; look at the payment queries page) and
+`orders_expired` (unpaid orders were cancelled; informational).
+
+Refunds owed to customers are listed at `GET /api/admin/refunds` and counted as `refundsDue` on the overview; once you have refunded
+one in the Paystack dashboard, record it there.
 
 Every `needs_review` payment (counted on the admin overview) is the customer's money
 sitting with Paystack. **Nothing refunds it automatically.** Refund it in Paystack's

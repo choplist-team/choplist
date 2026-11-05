@@ -10,11 +10,12 @@ import { logEvent } from '../events/log.js';
 import { accessKeyMatches, generateAccessKey } from '../orders/delivery-code.js';
 import { placeOrder } from '../orders/place-order.js';
 import { startPayment, type PayOptions } from '../payments/pay.js';
+import { reconcileOrderPayment } from '../payments/reconcile.js';
 import { buildPaymentStatus } from '../payments/status.js';
 import { PaymentModel } from '../models/payment.js';
 import { orderPaymentView, reportPaidByCustomer } from '../orders/payment-state.js';
 import { missingOrderBody, submitMissingOrderReport } from '../support/missing-order.js';
-import { paymentQueryBody, raisePaymentQuery } from '../support/payment-query.js';
+import { listQueriesForOrder, paymentQueryBody, raisePaymentQuery } from '../support/payment-query.js';
 import { createRateLimiters, type RateLimitSettings } from '../middleware/rate-limit.js';
 import { lookupSchema, placeOrderSchema } from './schema.js';
 
@@ -249,6 +250,14 @@ export function createPublicRouter(rateLimits: RateLimitSettings, pay: PayOption
     res.status(201).json(await raisePaymentQuery(order, 'customer', paymentQueryBody.parse(req.body)));
   });
 
+  // The customer's own payment queries on this order and where each stands, so they can
+  // see whether ChopList has looked at it. Only the ones they raised (not the seller's).
+  router.get('/orders/:ref/payment-queries', limit.status, async (req, res) => {
+    const order = await orderForKey(req);
+    res.set('Cache-Control', 'no-store');
+    res.json({ ref: order.ref, queries: await listQueriesForOrder(order._id, 'customer') });
+  });
+
   // Where this order stands on payment: for the page the customer lands on after
   // Paystack, which polls it until the state is "paid". Same key rule as /pay (the
   // ref and phone digits are not enough), same 404 for every way of being wrong.
@@ -258,12 +267,17 @@ export function createPublicRouter(rateLimits: RateLimitSettings, pay: PayOption
     const notFound = new AppError(404, 'ORDER_NOT_FOUND', 'No order matches that reference and key');
     if (!REF_PATTERN.test(ref)) throw notFound;
 
-    const order = await OrderModel.findOne({ ref }).select('+accessKeyHash');
-    if (!order || !accessKeyMatches(req.get('x-order-key'), order.accessKeyHash)) throw notFound;
+    const found = await OrderModel.findOne({ ref }).select('+accessKeyHash');
+    if (!found || !accessKeyMatches(req.get('x-order-key'), found.accessKeyHash)) throw notFound;
+
+    // If a payment is still waiting and the webhook has not come, ask Paystack ourselves
+    // (rate limited per payment; see payments/reconcile.ts), then read the order afresh.
+    await reconcileOrderPayment(found._id, pay.paystack);
+    const order = (await OrderModel.findById(found._id)) ?? found;
 
     const [seller, attempts] = await Promise.all([
       SellerModel.findById(order.sellerId),
-      PaymentModel.find({ orderId: order._id }, { status: 1, reference: 1, amountKobo: 1, serviceFee: 1, paidAt: 1, createdAt: 1 })
+      PaymentModel.find({ orderId: order._id }, { status: 1, reference: 1, amountKobo: 1, serviceFee: 1, paidAt: 1, createdAt: 1, refund: 1 })
         .sort({ createdAt: -1 })
         .limit(50)
         .lean(),

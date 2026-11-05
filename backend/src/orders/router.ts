@@ -3,9 +3,9 @@ import { authenticate, currentSellerId, requireSeller } from '../auth/middleware
 import type { AuthProvider } from '../auth/provider.js';
 import { AppError } from '../errors.js';
 import { OrderModel, REF_PATTERN, type OrderDoc } from '../models/order.js';
-import { paymentQueryBody, raisePaymentQuery } from '../support/payment-query.js';
+import { listQueriesForOrder, paymentQueryBody, raisePaymentQuery } from '../support/payment-query.js';
 import { confirmDelivery, markOutForDelivery, resetDeliveryCode } from './delivery.js';
-import { confirmationFields, orderPaymentView, recordPaymentEventBestEffort } from './payment-state.js';
+import { confirmationFields, orderPaymentView, paymentHistory, recordPaymentEventBestEffort } from './payment-state.js';
 import { confirmDeliverySchema } from './schema.js';
 import { toSellerOrder } from './seller-view.js';
 import { returnStock } from './stock.js';
@@ -81,6 +81,20 @@ export function createOrderRouter(auth: AuthProvider): Router {
     const filter = orderFilter(req);
     const { code } = confirmDeliverySchema.parse(req.body);
     res.json(toSellerOrder(await confirmDelivery(filter, code)));
+  });
+
+  // The story of this order's money: every change, who caused it and when. Your own
+  // orders only.
+  router.get('/:ref/payment-history', async (req, res) => {
+    const order = await loadOrNotFound(orderFilter(req));
+    res.json({ ref: order.ref, payment: orderPaymentView(order), history: await paymentHistory(order._id) });
+  });
+
+  // The payment queries on this order (raised by the customer or by you), with where
+  // each one stands. Your own orders only.
+  router.get('/:ref/payment-queries', async (req, res) => {
+    const order = await loadOrNotFound(orderFilter(req));
+    res.json({ ref: order.ref, queries: await listQueriesForOrder(order._id) });
   });
 
   // "Something is wrong with this payment" (for example the customer says they paid

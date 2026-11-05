@@ -110,6 +110,9 @@ const orderSchema = new Schema(
     status: { type: String, enum: ORDER_STATUSES, required: true, default: 'pending' },
     paidAt: Date,
     cancelledAt: Date,
+    // Why it was cancelled when the seller did not do it: 'expired' = nobody paid in
+    // time and the portions went back on sale (orders/expire.ts). Absent otherwise.
+    cancelReason: { type: String, enum: ['expired'] },
     outForDeliveryAt: Date,
     deliveredAt: Date,
 

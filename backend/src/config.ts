@@ -27,10 +27,14 @@ export const DEFAULT_PLATFORM_FEE_BPS = 0;
 export const DEFAULT_TRIAL_DAYS = 7;
 // Whole naira per plan.
 export const DEFAULT_MONTHLY_NAIRA = 3000;
-// !! PLACEHOLDER, PENDING TEAM CONFIRMATION. The brief said 11,000, which costs
-// !! more than three months at 3,000 (9,000), so the real number is undecided.
-// !! Confirm it, then set SUBSCRIPTION_QUARTERLY_NAIRA on Render.
-export const DEFAULT_QUARTERLY_NAIRA = 8000;
+// How long an order can sit unpaid before it is cancelled and its portions go back on
+// sale (orders/expire.ts). 0 turns the expiry off.
+export const DEFAULT_ORDER_EXPIRY_HOURS = 48;
+
+// 11,000, as the project description says. Note this is MORE than three months at
+// the monthly price (3 x 3,000 = 9,000), so the quarterly plan costs extra rather
+// than saving money; that is the agreed price, not a typo.
+export const DEFAULT_QUARTERLY_NAIRA = 11_000;
 
 // A whole-number setting where a blank value (as left by .env.example) means "use the
 // default". Without this a blank would be read as 0 and refused at startup.
@@ -116,6 +120,12 @@ const EnvSchema = z.object({
     .optional()
     .transform((raw) => (raw && raw.trim() !== '' ? raw.trim() : undefined))
     .pipe(z.url({ protocol: /^https?$/, error: 'PAYSTACK_CALLBACK_URL must be an http(s) URL' }).optional()),
+
+  // Unpaid orders hold stock until someone cancels them. After this many hours an order
+  // that was never paid (and nobody is mid-payment on) is cancelled and its portions go
+  // back on sale. 0 = never. Orders where the customer said they paid by transfer are
+  // never expired: the seller still has to look at those.
+  ORDER_EXPIRY_HOURS: wholeNumberSetting(DEFAULT_ORDER_EXPIRY_HOURS, 0, 720),
 
   // ---- Vendor billing: free trial and subscriptions (see billing/) ----
   TRIAL_DAYS: wholeNumberSetting(DEFAULT_TRIAL_DAYS, 1, 90),

@@ -11,6 +11,8 @@ import {
   menuAnalyticsQuery,
 } from './analytics.js';
 import { auditListQuery, listAudit } from './audit.js';
+import { listSubscriptions, subscriptionListQuery } from './subscriptions.js';
+import { listRefunds, markRefunded, parseRefundId, refundListQuery, refundMarkBody } from './refunds.js';
 import { listPaymentQueries, paymentQueryListQuery, paymentQueryResolveBody, parsePaymentQueryId, resolvePaymentQuery } from './payment-queries.js';
 import { listOrders, orderDetail, orderDetailQuery, orderListQuery } from './orders.js';
 import { eventListQuery, health, listEvents, listReports, parseReportId, reportListQuery, resolveBody, resolveReport } from './support.js';
@@ -118,6 +120,21 @@ export function createAdminRouter(auth: AuthProvider, adminIds: readonly string[
   router.patch('/payment-queries/:id/resolve', async (req, res) => {
     const { note } = paymentQueryResolveBody.parse(req.body ?? {});
     res.json(await resolvePaymentQuery({ id: parsePaymentQueryId(req.params.id), adminId: currentAdminId(req), note }));
+  });
+
+  // ---- Vendor subscriptions ----
+  router.get('/subscriptions', async (req, res) => {
+    res.json(await listSubscriptions(subscriptionListQuery.parse(req.query)));
+  });
+
+  // ---- Refunds owed to customers (done by hand in Paystack, recorded here) ----
+  router.get('/refunds', async (req, res) => {
+    res.json(await listRefunds(refundListQuery.parse(req.query)));
+  });
+
+  router.patch('/refunds/:id/mark-refunded', async (req, res) => {
+    const { note } = refundMarkBody.parse(req.body ?? {});
+    res.json(await markRefunded({ id: parseRefundId(req.params.id), adminId: currentAdminId(req), note }));
   });
 
   // ---- Audit trail ----

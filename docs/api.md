@@ -66,6 +66,7 @@ Every error, on every route, has this shape:
 | 404 | `SELLER_NOT_FOUND` | No seller has this public link |
 | 404 | `ORDER_NOT_FOUND` | No order matches that reference and phone digits (same error for both). On `/pay` and `/payment-status`: no order matches that reference and `X-Order-Key` (a wrong key, a missing key and an unknown reference all look the same) |
 | 404 | `REPORT_NOT_FOUND` | No "my order is missing" report has that id (admin) |
+| 404 | `REFUND_NOT_FOUND` | No payment needing a refund has that id (admin). An ordinary payment is also a 404 here |
 | 404 | `PAYMENT_QUERY_NOT_FOUND` | No payment query has that id (admin) |
 | 404 | `SUBSCRIPTION_NOT_FOUND` | No subscription of this vendor has that reference (another vendor's reference looks the same) |
 | 409 | `SLUG_TAKEN` | The chosen link is used by another seller |
@@ -319,9 +320,9 @@ their shop link **through the app**.
   (`not_started`, `pending`, `verified`, `rejected`) and **nothing depends on it yet**:
   it does not block selling, sharing or paying. Nothing in the API changes it yet either.
   Who verifies vendors, how, and what "verified" unlocks are open product decisions.
-- **Plans:** monthly **₦3,000**, quarterly **₦8,000**. The quarterly price is a
-  **placeholder, pending team confirmation** (the brief said ₦11,000, which costs more
-  than three months at ₦3,000). Both prices are settings, in whole naira.
+- **Plans:** monthly **₦3,000**, quarterly **₦11,000**, as the project description says.
+  Note the quarterly plan costs more than three months at the monthly price (₦9,000),
+  so it is not a saving. Both prices are settings, in whole naira.
 - **Money.** Subscription payments go to **ChopList's own Paystack account**: no
   subaccount, no split. They are separate from customers paying vendors for orders.
 - **No per-order platform fee** any more (see [What a payment costs](#what-a-payment-costs)).
@@ -363,7 +364,7 @@ function.
   "verificationDue": false,
   "plans": [
     { "id": "monthly", "months": 1, "priceNaira": 3000 },
-    { "id": "quarterly", "months": 3, "priceNaira": 8000 }
+    { "id": "quarterly", "months": 3, "priceNaira": 11000 }
   ]
 }
 ```
@@ -533,7 +534,7 @@ receipt goes nowhere.
 | -------- | ------- | ------- |
 | `TRIAL_DAYS` | `7` | Length of the free trial |
 | `SUBSCRIPTION_MONTHLY_NAIRA` | `3000` | Monthly price |
-| `SUBSCRIPTION_QUARTERLY_NAIRA` | `8000` | Quarterly price. **Placeholder, pending team confirmation.** The server says so in its log on every start until the variable is set |
+| `SUBSCRIPTION_QUARTERLY_NAIRA` | `11000` | Quarterly price |
 | `SUBSCRIPTION_CALLBACK_URL` | none | The frontend page Paystack sends a vendor back to after paying (agree the route with the frontend team) |
 | `SHARE_URL_BASE` | none | Start of a shop link without the slug, e.g. `https://choplistafrica.com/shop` |
 | `PLATFORM_FEE_BPS` | `0` | Per-order fee. `0` = off |
@@ -672,6 +673,8 @@ Response `200`:
     "sellersOnPlatform": { "allTime": 2, "last30Days": 2 },
     "onlinePaymentsReady": 2,
     "paymentsNeedingReview": 2,
+    "refundsDue": 1,
+    "openPaymentQueries": 3,
     "definitions": { "gmv": "...", "revenue": "...", "...": "one entry per figure above" }
   },
   "funnel": [
@@ -693,6 +696,9 @@ Response `200`:
 - Success rate counts what was **confirmed**: by the seller (bank transfer) or by
   Paystack. An order paid by bank transfer but never marked paid by the seller
   counts as not succeeded.
+
+The overview also has a `subscriptions` block (see [Admin: subscriptions](#admin-subscriptions)) and the `payments` block has
+`refundsDue` and `openPaymentQueries`: make both hard to miss when above 0.
 
 The `payments` block (all show their own `definitions`; show them beside the figures):
 
@@ -882,6 +888,12 @@ Authorization: Bearer <admin token>
 **Every reveal is written to the audit trail first**; if that fails nothing private
 is returned. `reveal` must be exactly `true` or `false`.
 
+The detail also carries the order's money: `paymentMethod`, `payment` (see [Order payment state](#order-payment-state-and-payment-queries)),
+`cancelReason`, `paymentHistory` (what changed, to what, by whom and when, oldest first) and `onlinePayments`: every Paystack attempt on the
+order, newest first, with `reference`, `status`, `amountNaira`, `serviceFee`, `platformFeeNaira`, `paystackFeeEstimateNaira`, `feePayer`
+(`customer` or `seller`), `createdAt`, `paidAt` and `refund` (set once an admin recorded refunding it). Never the seller's payout
+account code.
+
 Response `200` (abridged):
 
 ```json
@@ -1063,7 +1075,7 @@ Response `200`:
 The troubleshooting log, newest first. Optional `?type=` (`order_failed`,
 `server_error`, `notification_failed`, `missing_order_report`, `payment_setup_failed`,
 `payment_start_failed`, `payment_webhook_issue`, `subscription_start_failed`,
-`subscription_webhook_issue`), `?level=`
+`subscription_webhook_issue`, `payment_query_raised`, `orders_expired`), `?level=`
 (`info`, `warn`, `error`), `?sellerId=`, `?from=` and `?to=` (calendar days in Lagos
 time, both included), `?page=`, `?limit=` (default 20, at most 100).
 
@@ -1202,7 +1214,7 @@ Response `200`:
 ```
 
 - `action` is one of `seller.suspend`, `seller.deactivate`, `seller.reinstate`,
-  `order.reveal_phone`, `report.resolve`, `payment_query.resolve`.
+  `order.reveal_phone`, `report.resolve`, `payment_query.resolve`, `refund.mark_refunded`.
 - `targetType` is `seller`, `order` or `report`. `targetId` is a seller id, an order
   reference or a report id. `targetLabel` is the seller's business name for seller
   actions (`null` if that seller no longer exists), the reference for orders, and
@@ -1464,9 +1476,17 @@ Errors: `404 ORDER_NOT_FOUND`, `409 ORDER_CANCELLED`.
 Cancels a pending, paid or out-for-delivery order and puts its portions back on
 sale (also after the menu has closed). Cancelling in transit also destroys the
 delivery code. No body. Safe to repeat: the stock comes back exactly once, even
-if several cancel requests arrive together. Refunding a paid order is done by the
-seller outside ChopList. A **delivered** order cannot be cancelled and its stock
-is not returned.
+if several cancel requests arrive together. A **delivered** order cannot be cancelled
+and its stock is not returned.
+
+**Cancelling an order that was paid online** works as before and then needs a refund:
+the customer's money is with Paystack. ChopList notices on its own (it is worked out
+from the data, so nothing is lost if the server dies mid-cancel) and lists it under
+`GET /api/admin/refunds` and in the overview's `refundsDue`; the customer's
+`payment-status` says `refund: { status: "due" }`. A person refunds it in the Paystack
+dashboard and records that. See [Refunds](#refunds-money-owed-back-to-customers). Orders
+paid by bank transfer are between the seller and the customer: ChopList holds no money
+to refund.
 
 ```
 PATCH /api/orders/CL-7KQ2M/cancel
@@ -1939,8 +1959,17 @@ the transfer instructions and a retry), `429 RATE_LIMITED`.
 
 Where an order stands on payment: for the page the customer lands on after Paystack,
 which polls it until it says `paid`. Same `X-Order-Key` rule as `/pay`, and the same
-`404 ORDER_NOT_FOUND` for every way of being wrong. Read-only: it never calls Paystack
-and never changes anything. The response is never cached (`Cache-Control: no-store`).
+`404 ORDER_NOT_FOUND` for every way of being wrong. The response is never cached
+(`Cache-Control: no-store`).
+
+**It can ask Paystack itself.** If a payment is still waiting and Paystack's webhook
+has not come, the server asks Paystack directly and, if Paystack says it succeeded,
+applies the payment exactly as the webhook would (the same code, so it is counted once
+whichever gets there first). This is the fallback for a lost webhook. It waits until the
+payment is 20 seconds old and asks about one payment at most once every 15 seconds, however
+often the page polls. If Paystack cannot be reached, the status is still answered (the payment
+just stays waiting). Nothing else changes anything: viewing a status never marks an order
+paid on its own say-so.
 
 ```
 GET /api/public/orders/CL-7KQ2M/payment-status
@@ -1962,7 +1991,9 @@ Response `200`:
   "reference": "CLP-9f2c4e8a1b7d3f6054a8c2e1",
   "paidAt": "2026-10-16T10:03:21.000Z",
   "onlinePaymentAvailable": true,
-  "payment": { "status": "confirmed", "reportedAt": null, "confirmedAt": "2026-10-16T10:03:21.000Z", "confirmedBy": "paystack" }
+  "payment": { "status": "confirmed", "reportedAt": null, "confirmedAt": "2026-10-16T10:03:21.000Z", "confirmedBy": "paystack" },
+  "refund": null,
+  "cancelReason": null
 }
 ```
 
@@ -1972,11 +2003,16 @@ Response `200`:
 | `awaiting_payment` | A payment was started and Paystack has not confirmed it | Keep polling. If the customer left Paystack without paying, offer "Try again" |
 | `paid` | The order is paid; `paymentMethod` says how | Stop polling. Show the confirmation |
 | `under_review` | The customer's money arrived but the order could not be completed (for example the seller cancelled it first) | Stop polling. Say ChopList is sorting it out and to contact the seller. Do not tell them to pay again |
-| `cancelled` | Cancelled, and nothing was taken | Stop polling. Say it was cancelled |
+| `cancelled` | Cancelled. If `refund` is `null`, nothing was taken. If `refund` is set, the order was **paid and then cancelled** | Stop polling. Say it was cancelled. If `refund.status` is `due`, say "your money will be refunded"; if `refunded`, "your money has been refunded". If `cancelReason` is `expired`, say it was cancelled because it was not paid in time |
 
 - `serviceFee`, `amountCharged` and `reference` come from the attempt being described
   and are `null` before any online attempt, and for orders paid by bank transfer.
   `amountCharged` is the whole amount the customer paid, in naira.
+- `refund` is `null` unless the customer's money is owed back: the order was paid and then
+  cancelled (`state: "cancelled"`), or the money arrived but could not be applied
+  (`state: "under_review"`). `{ "status": "due" }` means ChopList still has to refund it (by hand, so it can
+  take a while); `{ "status": "refunded" }` means it has been.
+- `cancelReason` is `"expired"` when the order was cancelled for not being paid in time, else `null`.
 - `payment` is the order's payment state: `unpaid`, `customer_reported`, `confirmed` or `failed`
   (see [Order payment state](#order-payment-state-and-payment-queries)). `payment.status` is
   `confirmed` exactly when the order is paid, by either method; `failed` means Paystack
@@ -2088,21 +2124,159 @@ resolves it, a new one can be raised). The customer route is strictly rate limit
   problem is already fixed. `openCount` is the number open overall. Never the customer's name,
   phone or address.
 - `PATCH /api/admin/payment-queries/:id/resolve` with an optional `{ "note": "..." }` (up to 300
-  characters): open to resolved. Asking again changes nothing and adds no audit entry; the action
+  characters, **shown to the person who raised the query**, so write it as a reply): open to resolved. Asking again changes nothing and adds no audit entry; the action
   `payment_query.resolve` is written to the audit trail first. Resolving records that someone dealt
   with it; it does not pay, refund or change the order. `404 PAYMENT_QUERY_NOT_FOUND`.
 
-### Cancelling after payment (not decided)
+### Cancelling after payment
 
-Cancelling is **exactly as it was**: a seller can cancel a `pending`, `paid` or `out_for_delivery`
-order, the portions go back on sale, and nothing about the payment is touched. That leaves a
-conflict the team has not resolved: **cancelling a Paystack-paid order leaves the customer's money
-with Paystack and no refund path.** The order shows `status: "cancelled"` with
-`payment.status: "confirmed"`, the payment stays `succeeded`, and nothing flags it for a refund
-(only a payment that arrives *after* a cancellation is flagged `needs_review`). Until it is decided
-(refund automatically? forbid cancelling a paid online order? flag it for an admin?), a person
-must notice and refund by hand in the Paystack dashboard. The admin order detail marks such an
-order `paid_then_cancelled`.
+Cancelling works exactly as before: a seller can cancel a `pending`, `paid` or `out_for_delivery` order and the portions go
+back on sale. What changed is what happens to the money. If the order was **paid online**, the customer's money is with
+Paystack, so the order now appears under [Refunds](#refunds-money-owed-back-to-customers) as `cancelled_after_payment`, the
+customer is told a refund is due, and the overview counts it. A person must still refund it by hand in the Paystack dashboard
+and record that. **Still undecided:** whether to refund automatically, or to forbid cancelling a paid online order. The admin order
+detail marks such an order `paid_then_cancelled`.
+
+## Refunds, expiry, history and queries
+
+### Refunds: money owed back to customers
+
+ChopList does **not** call Paystack's refund API. Moving money back is irreversible and has never been
+tried against real Paystack, so a person refunds in the **Paystack dashboard** and then records it here.
+What ChopList does is make sure no refund is forgotten.
+
+A payment needs a refund when the customer's money reached Paystack and the order cannot go ahead:
+
+| `kind` | When |
+| ------ | ---- |
+| `cancelled_after_payment` | Paystack confirmed the payment, then the order was cancelled |
+| `money_held` | The money arrived but could not be applied: the order was cancelled first, the amount was wrong, or the customer paid twice |
+
+Which payments need one is **worked out from the data every time**, not stored when an order is cancelled,
+so a crash between "cancelled" and "refund noted" cannot lose one, and the cancel route is unchanged. The
+only thing stored is that a person dealt with it.
+
+**A caution for the test-mode run.** A payment made through a seller's subaccount is already split: Paystack
+may have settled the seller's share to the seller's bank. How Paystack takes a refund back from a split payment
+(from the seller's settlement, or from ChopList) has not been checked. Do one in test mode before relying on this.
+
+**`GET /api/admin/refunds?status=due|refunded&page=&limit=`** (admin). Still-due ones first, then newest first.
+
+```json
+{
+  "refunds": [
+    {
+      "id": "6711a0c2e4b0a1b2c3d4e777",
+      "kind": "cancelled_after_payment",
+      "status": "due",
+      "orderRef": "CL-7KQ2M",
+      "amountNaira": 7716,
+      "paystackReference": "CLP-9f2c4e8a1b7d3f6054a8c2e1",
+      "paidAt": "2026-10-16T10:03:21.000Z",
+      "createdAt": "2026-10-16T10:01:02.000Z",
+      "seller": { "id": "670f...", "businessName": "Mama T's Kitchen", "slug": "mama-ts-kitchen" },
+      "refundedAt": null, "refundedBy": null, "note": null
+    }
+  ],
+  "dueCount": 1,
+  "definitions": { "due": "...", "cancelled_after_payment": "...", "money_held": "...", "refunded": "..." },
+  "pagination": { "page": 1, "limit": 20, "total": 1, "pages": 1 }
+}
+```
+
+`id` is the payment's id. `amountNaira` is what the customer actually paid, including any service fee. Never the
+customer's name, phone or address, the seller's payout account or the delivery code. `400 VALIDATION_ERROR` for a bad `status`.
+
+**`PATCH /api/admin/refunds/:id/mark-refunded`** with an optional `{ "note": "..." }` (up to 300 characters, for example
+the Paystack refund reference). Records that an admin refunded it by hand; it moves no money. Safe to repeat: the
+first note and time are kept and no second audit entry is written; two admins at once record it once. The action
+`refund.mark_refunded` is written to the audit trail **first**. Only a payment that really needs a refund can be marked:
+an ordinary payment, an unknown id or a malformed id is `404 REFUND_NOT_FOUND`.
+
+The overview's `payments.refundsDue` counts the ones still due. The customer's `payment-status` shows `refund`
+(see above), and the admin order detail shows the refund on the payment.
+
+### Expiry: unpaid orders no longer hold stock for ever
+
+Every 15 minutes the server cancels orders that nobody paid for and puts their portions back on sale, using the same
+steps as a seller cancelling (stock returns exactly once, even if sweeps overlap). The age is `ORDER_EXPIRY_HOURS`
+(**default 48**; `0` switches it off).
+
+It is careful, because cancelling a real customer's order is worse than holding stock. It **never** touches:
+
+- an order the customer says they paid by transfer (the seller still has to look at the bank),
+- an order that is paid, out for delivery, delivered or already cancelled,
+- an order with money from Paystack (confirmed, or set aside for review),
+- an order where a Paystack payment was started in the last 2 hours (the customer may be on Paystack's page).
+
+The cancelling write only matches an order that is *still* pending and unreported, so a payment confirmed a moment
+before wins. If a payment is confirmed a moment *after*, the webhook finds the order cancelled and sets the money aside
+for refund (`money_held` above), exactly as if the seller had cancelled.
+
+The order shows `cancelReason: "expired"` to the seller (seller order object) and to the customer (`payment-status`),
+and in the admin order detail. A seller's own cancel has `cancelReason: null`. One line is written to the event log per
+sweep (type `orders_expired`, with the count only).
+
+Run it by hand, or look first: `npm run expire:orders` (a **dry run**: counts only), `npm run expire:orders -- --apply`,
+`--hours N` for a different age. **This is a product decision for the team:** 48 hours may be too short for a menu whose
+cut-off is days away. Set `ORDER_EXPIRY_HOURS` accordingly, or `0` to switch it off.
+
+### Order payment history (seller)
+
+**`GET /api/orders/:ref/payment-history`**: the story of one of the seller's own orders' money, oldest first.
+
+```json
+{
+  "ref": "CL-7KQ2M",
+  "payment": { "status": "confirmed", "reportedAt": "...", "confirmedAt": "...", "confirmedBy": "seller" },
+  "history": [
+    { "from": "unpaid", "to": "customer_reported", "source": "customer", "at": "2026-10-09T21:40:02.000Z" },
+    { "from": "customer_reported", "to": "confirmed", "source": "seller", "at": "2026-10-09T22:15:40.000Z" }
+  ]
+}
+```
+
+`source` is `customer`, `seller` or `paystack`. Another seller's order is `404 ORDER_NOT_FOUND`. No internal ids, fees or
+payout details.
+
+### Seeing your payment queries
+
+- **Customer:** `GET /api/public/orders/:ref/payment-queries` with `X-Order-Key`. Only the queries **they** raised on this order,
+  newest first, never cached.
+- **Seller:** `GET /api/orders/:ref/payment-queries`. **Every** query on their own order, theirs and the customer's.
+
+```json
+{
+  "ref": "CL-7KQ2M",
+  "queries": [
+    {
+      "id": "6710c3e4e4b0a1b2c3d4e600", "orderRef": "CL-7KQ2M", "raisedBy": "customer", "reason": "payment_not_reflected",
+      "message": "I paid by transfer an hour ago", "status": "resolved", "createdAt": "2026-10-09T21:45:00.000Z",
+      "resolvedAt": "2026-10-10T09:00:00.000Z", "resolutionNote": "We asked the seller to check their account"
+    }
+  ]
+}
+```
+
+`resolutionNote` is the admin's note and **is shown to the person who raised the query**, so admins should write it as a
+reply. Who resolved it is never shown. Wrong or missing key, or another seller's order: `404 ORDER_NOT_FOUND`.
+
+**How ChopList finds out.** The platform has no email or push system yet, so there is no message to anyone. Raising a query
+writes a line to the event log (`payment_query_raised`, level `warn`, the reason as the code, the order reference, who raised
+it; never the message text), and the overview shows `payments.openPaymentQueries`. Someone has to look at the admin
+payment-queries page. **Who that is has not been decided.** Real notifications are the planned Sprint 3 work.
+
+### Admin: subscriptions
+
+- **`GET /api/admin/overview`** now has a `subscriptions` block:
+  `activeNow`, `onTrial`, `expired`, `notStarted`, `expiringIn7Days`, `revenue` (`allTime`, `last30Days`, naira),
+  `purchases` (`allTime`, `last30Days`, `monthly`, `quarterly`), `needsReview`, and `definitions` for each. This is ChopList's
+  income now that it takes no cut of each order; `payments.revenue` (the per-order cut) is 0 unless that fee is switched back on.
+- **`GET /api/admin/subscriptions?status=&plan=&sellerId=&page=&limit=`**: every attempt, newest first, with the vendor (id,
+  name, slug) and the plan, amount, reference and dates. No bank, phone or email.
+- **`GET /api/admin/sellers/:id`** has a `billing` block: `state` (`trial`, `active`, `expired`, or `null` for a seller from before
+  billing whose trial has not started), `canShareLink`, the trial dates, `subscription`, `accessEndsAt` and `verification`.
+  Looking at a vendor **never** starts their trial.
 
 ## Paystack webhook
 
@@ -2283,7 +2457,7 @@ transfer keeps working unchanged**: until the frontend ships these, nothing brea
 
 11. A **billing screen** from `GET /api/sellers/me/billing`: the trial countdown
     (`trialEndsAt`), or "active until `accessEndsAt`", or "expired", with the plans and
-    prices from `plans` (do not hard-code prices; the quarterly one may change).
+    prices from `plans` (do not hard-code prices; they are settings and can be changed).
 12. **Subscribe**: `POST /api/sellers/me/billing/subscribe` with the chosen plan, then
     redirect to `authorizationUrl`. Add a **return page** at `SUBSCRIPTION_CALLBACK_URL`
     (agree the route with the backend; a different page from the customer's) that
@@ -2315,6 +2489,19 @@ transfer keeps working unchanged**: until the frontend ships these, nothing brea
 20. Admin: a **payment queries** page from `GET /api/admin/payment-queries` (open first, `openCount`) with a
     resolve button and note. Nothing says who watches it yet; at least show `openCount` somewhere visible.
 
+**Refunds, expiry, history and queries**
+
+21. Customer payment-status page: for `state: "cancelled"` with `refund` set, show "Your order was cancelled. Your money will
+    be refunded" (`due`) or "has been refunded" (`refunded`); for `cancelReason: "expired"` show "cancelled because it was not
+    paid in time". For `state: "under_review"` also read `refund`.
+22. Seller order cards: show `cancelReason` ("Cancelled: not paid in time") and a link to `GET /api/orders/:ref/payment-history`.
+    A seller who cancels a paid online order should be told the customer will be refunded.
+23. Customer and seller: show their payment queries with status and the admin's reply (`payment-queries` routes), instead of only
+    the "already open" error.
+24. Admin: a **refunds page** (`GET /api/admin/refunds`, mark refunded with a note), show `refundsDue`, `openPaymentQueries` and the
+    new `subscriptions` block on the overview, a **subscriptions page** (`GET /api/admin/subscriptions`), `billing` on the vendor
+    page, and the payments, history and refund on the order detail.
+
 **Admin**
 
 10. Show the `payments` and `funnel` blocks of `GET /api/admin/overview` with their
@@ -2333,15 +2520,15 @@ Not built, on purpose. Be upfront about these when presenting.
   [paystack-setup.md](paystack-setup.md).
 - **Test mode only until Paystack verifies the business** (live keys need it). The
   server accepts any `sk_` key, so use the test key until then.
-- **No refunds.** A payment flagged `needs_review` is refunded by hand in the Paystack
-  dashboard. `revenue` is not reduced by refunds, and a flagged payment on a cancelled
-  order is not counted as revenue but a *succeeded* one is until removed.
-- **Unpaid orders still hold stock.** There is no expiry: an order that is started online
-  but never paid, like one never paid by transfer, keeps its portions off sale until the
-  seller cancels it. An expiry job is the fix.
-- **If a webhook is lost, the customer stays on "awaiting payment".** Paystack retries,
-  but if it never arrives the order is not marked paid. A fallback (the status route
-  asking Paystack itself) is possible and safe, but spends Paystack calls on every poll.
+- **Refunds are tracked, not made.** ChopList never calls Paystack's refund API. A person refunds in the
+  Paystack dashboard and records it (see Refunds). How Paystack refunds a payment that was split to a seller's
+  subaccount is unchecked. `revenue` is not reduced by refunds.
+- **Unpaid orders expire after `ORDER_EXPIRY_HOURS` (default 48).** That default is a product decision: it may
+  be too short for a menu whose cut-off is days away. Orders where the customer said they paid, or where money
+  or a payment in progress exists, are never expired.
+- **The lost-webhook fallback costs Paystack calls**, at most one per waiting payment per 15 seconds, and only
+  while someone is checking its status. A payment nobody checks and whose webhook never came stays waiting until
+  someone does (or Paystack resends).
 - **No fee preview.** The customer sees the service fee only after pressing Pay. A
   separate quote route would show it first.
 - **Fake payer email.** Paystack requires one, customers do not give one, so each
@@ -2364,19 +2551,19 @@ Not built, on purpose. Be upfront about these when presenting.
   is not blocked. If the customer then pays online, that payment is flagged for refund.
 - **The webhook trusts the signature only,** not Paystack's sending addresses.
 - **The retry route has no limit of its own.** Each call spends a few Paystack requests.
-- **Admin order detail does not yet show Paystack payments** for one order; use the event
-  log and the Paystack dashboard.
 - **"Profile complete" in the funnel equals "registered"** today (see the admin overview).
 - **With the per-order fee off, some admin figures read zero or lose meaning:** `revenue`,
-  `payingSellers` and the funnel's paying stage are built from the per-order fee. They do
-  not include subscription income, and the admin overview has no subscription figures yet.
+  `payingSellers` and the funnel's paying stage are built from the per-order fee, so they
+  read 0 with it off. Subscription income is in the overview's `subscriptions` block instead.
 - **The share restriction is soft** (see Vendor billing): a shared link keeps working, and
   it protects nothing until the frontend uses `GET /api/sellers/me/share`. A product
   decision for the team to confirm.
-- **The quarterly price is a placeholder** (₦8,000, pending team confirmation).
+- **The quarterly plan costs more than three months of the monthly plan** (₦11,000 against ₦9,000), as
+  the project description says. If that was not intended, change `SUBSCRIPTION_QUARTERLY_NAIRA`.
 - **Verification is recorded, not run.** Nothing sets it, and nothing depends on it.
-- **No admin view of subscriptions,** and no way to grant or extend one by hand. A
-  `needs_review` subscription is found through the event log and the Paystack dashboard.
+- **Admins can see subscriptions but not change them:** no way to grant, extend or cancel one by hand. A
+  `needs_review` subscription shows in the list and the overview's `subscriptions.needsReview`; refunding it is done
+  in the Paystack dashboard and is not recorded in ChopList.
 - **No refunds for subscriptions** (manual in Paystack), and cancelling a subscription is
   not built: it simply runs to its expiry and is not renewed.
 - **Paying during the trial** does not add the remaining trial days.
@@ -2388,10 +2575,11 @@ Not built, on purpose. Be upfront about these when presenting.
   receipts for them go nowhere. `npm run backfill:billing -- --check-clerk` counts them.
 - **Switching a vendor off (suspending) does not cancel their subscription;** the cover
   just carries on, unused.
-- **Cancelling a paid order has no refund path** (see Order payment state). Cancelling is unchanged.
-- **Nobody is assigned to payment queries.** There is no notification to the seller or to ChopList when
-  one is raised, and the person who raised it cannot see its status. The admin console is the only place.
-- **The order payment history has no API,** and the admin order detail does not show it.
+- **Cancelling a paid online order still needs a person** to refund it (see Refunds), and whether to automate or
+  forbid it is undecided.
+- **Nobody is assigned to payment queries, and nobody is messaged.** The platform has no email or push, so raising a
+  query only writes an event-log line and raises the overview's `openPaymentQueries`. The people who raised one can
+  see its status and the admin's reply, but are not told when it changes.
 - **"I've paid" is a claim.** Nothing checks it against the bank. A customer can press it without paying;
   that is why the seller still confirms and the order stays `pending`.
 - **`failed` is rare.** It is only set when Paystack's own confirmation of a payment says it failed; an
@@ -2453,6 +2641,14 @@ Not built, on purpose. Be upfront about these when presenting.
 3. The seller sees "Customer says they paid", checks the bank app, and calls
    `PATCH /api/orders/:ref/paid`. The order is `paid`; `payment.status` is `confirmed` by `seller`.
 4. If the money never arrives, the seller (or the customer) raises a payment query for an admin.
+
+### A paid online order is cancelled
+
+1. The seller cancels it (`PATCH /api/orders/:ref/cancel`). The portions go back on sale.
+2. The order appears in `GET /api/admin/refunds` as `cancelled_after_payment`, `status: "due"`; the customer's `payment-status` says
+   `state: "cancelled"`, `refund: { status: "due" }`.
+3. An admin refunds the customer in the Paystack dashboard, then calls `PATCH /api/admin/refunds/:id/mark-refunded` with the refund
+   reference as the note. The customer's page now says `refunded`.
 
 ### A vendor subscribes
 

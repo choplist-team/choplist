@@ -53,12 +53,30 @@ describe('parseEnv', () => {
     expect(() => parseEnv({ ...valid, ALLOWED_ORIGINS: 'https://ChopListAfrica.com' })).toThrow(/is not an origin/);
   });
 
+  describe('order expiry setting', () => {
+    it('defaults to 48 hours', () => {
+      expect(parseEnv(valid).ORDER_EXPIRY_HOURS).toBe(48);
+    });
+
+    it('reads an override, treats a blank as the default, and 0 switches it off', () => {
+      expect(parseEnv({ ...valid, ORDER_EXPIRY_HOURS: '72' }).ORDER_EXPIRY_HOURS).toBe(72);
+      expect(parseEnv({ ...valid, ORDER_EXPIRY_HOURS: '' }).ORDER_EXPIRY_HOURS).toBe(48);
+      expect(parseEnv({ ...valid, ORDER_EXPIRY_HOURS: '0' }).ORDER_EXPIRY_HOURS).toBe(0);
+    });
+
+    it('refuses a negative, fractional, text or silly-long value', () => {
+      for (const bad of ['-1', '1.5', 'two days', '721']) {
+        expect(() => parseEnv({ ...valid, ORDER_EXPIRY_HOURS: bad })).toThrow(/ORDER_EXPIRY_HOURS/);
+      }
+    });
+  });
+
   describe('vendor billing settings', () => {
-    it('defaults to a 7 day trial, 3000 monthly and the 8000 quarterly placeholder, with no return page', () => {
+    it('defaults to a 7 day trial, 3000 monthly and 11000 quarterly, with no return page', () => {
       const config = parseEnv(valid);
       expect(config.TRIAL_DAYS).toBe(7);
       expect(config.SUBSCRIPTION_MONTHLY_NAIRA).toBe(3000);
-      expect(config.SUBSCRIPTION_QUARTERLY_NAIRA).toBe(8000);
+      expect(config.SUBSCRIPTION_QUARTERLY_NAIRA).toBe(11_000);
       expect(config.SUBSCRIPTION_CALLBACK_URL).toBeUndefined();
       expect(config.SHARE_URL_BASE).toBeUndefined();
     });
@@ -80,7 +98,7 @@ describe('parseEnv', () => {
 
     it('treats blank numbers, as left by .env.example, as "use the default" instead of 0', () => {
       const config = parseEnv({ ...valid, TRIAL_DAYS: '', SUBSCRIPTION_MONTHLY_NAIRA: '  ', SUBSCRIPTION_QUARTERLY_NAIRA: '' });
-      expect(config).toMatchObject({ TRIAL_DAYS: 7, SUBSCRIPTION_MONTHLY_NAIRA: 3000, SUBSCRIPTION_QUARTERLY_NAIRA: 8000 });
+      expect(config).toMatchObject({ TRIAL_DAYS: 7, SUBSCRIPTION_MONTHLY_NAIRA: 3000, SUBSCRIPTION_QUARTERLY_NAIRA: 11_000 });
     });
 
     it('refuses a trial that is zero, negative, fractional, text or longer than 90 days', () => {

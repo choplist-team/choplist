@@ -2,6 +2,7 @@ import { createApp } from './app.js';
 import { createClerkAuth } from './auth/clerk.js';
 import { parseEnv, type Config } from './config.js';
 import { connectDb, disconnectDb } from './db.js';
+import { startExpirySweep } from './orders/expire.js';
 import { createPaystackClient } from './payments/paystack.js';
 
 let config: Config;
@@ -44,11 +45,9 @@ const app = createApp({
   }),
 });
 
-// The quarterly price is a placeholder until the team confirms it. Say so in the
-// log on every start until someone sets it deliberately.
-if (!process.env.SUBSCRIPTION_QUARTERLY_NAIRA) {
-  console.warn(`SUBSCRIPTION_QUARTERLY_NAIRA is not set: using the placeholder ${config.SUBSCRIPTION_QUARTERLY_NAIRA} naira (pending team confirmation).`);
-}
+// Cancel orders nobody paid for, so their portions do not stay off sale for ever.
+// ORDER_EXPIRY_HOURS=0 turns it off.
+const expirySweep = startExpirySweep(config.ORDER_EXPIRY_HOURS);
 
 const server = app.listen(config.PORT, () => {
   // The count only (no values): in the Render log it shows at a glance whether
@@ -67,6 +66,7 @@ server.on('error', (err) => {
 // the database connection.
 function shutdown(signal: string) {
   console.log(`${signal} received, shutting down`);
+  expirySweep?.stop();
   server.close(() => {
     disconnectDb().finally(() => process.exit(0));
   });

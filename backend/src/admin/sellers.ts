@@ -6,6 +6,7 @@ import { MenuModel } from '../models/menu.js';
 import { ORDER_STATUSES, OrderModel } from '../models/order.js';
 import { SELLER_STATUSES, SellerModel, type SellerStatus } from '../models/seller.js';
 import { escapeRegex, objectIdText, paginationQuery, toPagination } from './query.js';
+import { sellerBillingSummary } from './subscriptions.js';
 
 // ---- What an admin sees of a seller -----------------------------------------
 // Contact, link, status, activity. Deliberately NOT the bank account details:
@@ -131,7 +132,7 @@ export function parseSellerId(raw: unknown): Types.ObjectId {
   return parsed.data;
 }
 
-export async function sellerDetail(id: Types.ObjectId) {
+export async function sellerDetail(id: Types.ObjectId, now: Date = new Date()) {
   const seller = await SellerModel.findById(id).lean();
   if (!seller) throw sellerNotFound();
 
@@ -154,6 +155,8 @@ export async function sellerDetail(id: Types.ObjectId) {
 
   return {
     ...toAdminSeller(seller),
+    // Free trial, subscription and verification (read-only: looking never starts a trial).
+    billing: await sellerBillingSummary(seller, now),
     orders: { total, ...orderCounts, lastOrderAt },
     menus: menus.map((menu) => ({
       id: menu._id.toString(),

@@ -5,6 +5,7 @@ import type { AuthProvider } from '../auth/provider.js';
 import { AppError } from '../errors.js';
 import { createRateLimiters, DEFAULT_RATE_LIMITS, type RateLimitSettings } from '../middleware/rate-limit.js';
 import { SellerModel } from '../models/seller.js';
+import { reconcileSubscription } from '../payments/reconcile.js';
 import { SUBSCRIPTION_PLANS, SubscriptionModel, type SubscriptionDoc } from '../models/subscription.js';
 import type { PaystackClient } from '../payments/paystack.js';
 import { assertCanShare, getBillingState } from './state.js';
@@ -69,8 +70,14 @@ export function createBillingRouter(auth: AuthProvider, options: BillingRouterOp
     const reference = String(req.params.reference ?? '');
     const notFound = new AppError(404, 'SUBSCRIPTION_NOT_FOUND', 'No subscription matches that reference');
     if (!SUBSCRIPTION_REFERENCE_PATTERN.test(reference)) throw notFound;
-    const subscription = await SubscriptionModel.findOne({ paystackReference: reference, sellerId: currentSellerId(req) });
+    let subscription = await SubscriptionModel.findOne({ paystackReference: reference, sellerId: currentSellerId(req) });
     if (!subscription) throw notFound;
+    // Still waiting and the webhook has not come: ask Paystack ourselves (rate limited
+    // per subscription; see payments/reconcile.ts), then read it afresh.
+    if (subscription.status !== 'active') {
+      await reconcileSubscription(subscription._id, paystack);
+      subscription = (await SubscriptionModel.findById(subscription._id)) ?? subscription;
+    }
     // Polled every few seconds: a browser or proxy must never answer from a copy.
     res.set('Cache-Control', 'no-store');
     res.json(toSubscriptionResponse(subscription));
