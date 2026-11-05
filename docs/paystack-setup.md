@@ -29,6 +29,9 @@ until the service restarts). All are described in `.env.example`.
 | `SUBSCRIPTION_MONTHLY_NAIRA` | `3000` (optional) |
 | `SUBSCRIPTION_QUARTERLY_NAIRA` | `11000` (optional; this is the default) |
 
+**After every deploy, open `GET /api/admin/system`** (as an admin). It says whether Paystack is in test or live mode, whether the return pages are set, and warns
+about anything that looks wrong, without ever showing a key.
+
 The startup log does not print any of these. If `PAYSTACK_SECRET_KEY` is set but does
 not start with `sk_`, the server refuses to start and says so (without printing the
 value).
@@ -121,6 +124,18 @@ Do these in test mode too, since they have never met real Paystack:
 2. **The fallback.** Pay an order, but temporarily point the Paystack test webhook URL somewhere that does not exist so the
    webhook cannot arrive. Poll the order's `payment-status`: after about 20 seconds it should turn `paid` on its own. Put the
    webhook URL back.
+
+### Notifications, the background re-check and admin tools
+
+Quick checks once the main run passes:
+
+1. As the test seller, open the notifications list after step 4: you should see "Order … was paid online". As an admin, the inbox should show a
+   "refund due" after step 9.
+2. **Background re-check:** repeat the lost-message test (step 11) but do **not** open the order page. About 2 to 17 minutes later the order should
+   still turn paid on its own.
+3. **Free grant:** as an admin, grant a monthly subscription to a vendor whose trial has ended, with a reason. The share button should work and the
+   admin income figures should **not** change. Then cancel it and the share button should stop.
+4. **Fee preview:** before pressing Pay, the preview total should equal the amount shown on the Paystack page.
 
 ## 4. When something is wrong
 

@@ -1,7 +1,12 @@
-import type { Types } from 'mongoose';
+import { mongo, type Types } from 'mongoose';
 import { z } from 'zod';
+import { nextCoverWindow } from '../billing/chain.js';
+import { newGrantReference } from '../billing/subscribe.js';
 import { computeBillingState } from '../billing/state.js';
-import { SellerModel } from '../models/seller.js';
+import { AppError } from '../errors.js';
+import { recordAdminAction } from '../events/log.js';
+import { notifySeller } from '../notifications/service.js';
+import { SellerModel, VERIFICATION_STATUSES } from '../models/seller.js';
 import { SUBSCRIPTION_PLANS, SUBSCRIPTION_STATUSES, SubscriptionModel } from '../models/subscription.js';
 import { objectIdText, paginationQuery, toPagination } from './query.js';
 
@@ -17,10 +22,12 @@ export const SUBSCRIPTION_DEFINITIONS = {
     'Sellers from before billing existed whose trial has not started yet. It starts the first time their billing state is read, or when the backfill script is run.',
   expiringIn7Days: 'Vendors whose paid cover ends within the next 7 days and who have no later subscription bought.',
   revenue:
-    'Money from subscriptions that Paystack confirmed, in naira, by the day it was confirmed. This is ChopList\'s income now that it takes no cut of each order. Paystack\'s own charges are not deducted, and refunds are not tracked.',
+    'Money from subscriptions that Paystack confirmed (free ones an admin granted are not income), in naira, by the day it was confirmed. This is ChopList\'s income now that it takes no cut of each order. Paystack\'s own charges are not deducted, and refunds are not tracked.',
   purchases: 'Confirmed subscription payments, by plan.',
   needsReview:
-    'Subscription payments where money arrived but nothing was activated (for example the amount was not the plan\'s price). A person must refund or decide; see the event log for the details.',
+    'Subscription payments where money arrived but nothing was activated (for example the amount was not the plan\'s price) and nobody has recorded a refund yet. A person must refund or decide.',
+  payingVendors: 'Vendors who have paid for a subscription at least once (free grants do not count), all time and in the last 30 days.',
+  adminGranted: 'Subscriptions an admin granted for free that are active now.',
 } as const;
 
 const naira = (n: number) => Math.round(n * 100) / 100;
@@ -36,23 +43,26 @@ export async function subscriptionsOverview(now: Date) {
   // Vendors covered right now.
   const activeIds = await SubscriptionModel.distinct('sellerId', { status: 'active', startsAt: { $lte: now }, expiresAt: { $gt: now } });
 
-  const [onTrial, expired, notStarted, revenueAll, revenueRecent, byPlan, needsReview, expiring] = await Promise.all([
+  const [onTrial, expired, notStarted, revenueAll, revenueRecent, byPlan, needsReview, expiring, payersAll, payersRecent, adminGranted] = await Promise.all([
     SellerModel.countDocuments({ 'billing.trialEndsAt': { $gt: now }, _id: { $nin: activeIds } }),
     SellerModel.countDocuments({ 'billing.trialEndsAt': { $lte: now }, _id: { $nin: activeIds } }),
     SellerModel.countDocuments({ 'billing.trialStartedAt': { $exists: false } }),
-    SubscriptionModel.aggregate<Group>([{ $match: { status: 'active' } }, { $group: { _id: null, n: { $sum: 1 }, total: { $sum: '$amountNaira' } } }]),
+    SubscriptionModel.aggregate<Group>([{ $match: { status: 'active', source: { $ne: 'admin' } } }, { $group: { _id: null, n: { $sum: 1 }, total: { $sum: '$amountNaira' } } }]),
     SubscriptionModel.aggregate<Group>([
-      { $match: { status: 'active', paidAt: { $gte: since30 } } },
+      { $match: { status: 'active', source: { $ne: 'admin' }, paidAt: { $gte: since30 } } },
       { $group: { _id: null, n: { $sum: 1 }, total: { $sum: '$amountNaira' } } },
     ]),
-    SubscriptionModel.aggregate<Group>([{ $match: { status: 'active' } }, { $group: { _id: '$plan', n: { $sum: 1 }, total: { $sum: '$amountNaira' } } }]),
-    SubscriptionModel.countDocuments({ status: 'needs_review' }),
+    SubscriptionModel.aggregate<Group>([{ $match: { status: 'active', source: { $ne: 'admin' } } }, { $group: { _id: '$plan', n: { $sum: 1 }, total: { $sum: '$amountNaira' } } }]),
+    SubscriptionModel.countDocuments({ status: 'needs_review', refund: { $exists: false } }),
     // Each vendor's latest paid-to date, if it falls in the next 7 days.
     SubscriptionModel.aggregate<{ _id: Types.ObjectId }>([
       { $match: { status: 'active', expiresAt: { $gt: now } } },
       { $group: { _id: '$sellerId', endsAt: { $max: '$expiresAt' } } },
       { $match: { endsAt: { $lte: in7 } } },
     ]),
+    SubscriptionModel.distinct('sellerId', { status: { $in: ['active', 'cancelled'] }, source: { $ne: 'admin' } }),
+    SubscriptionModel.distinct('sellerId', { status: { $in: ['active', 'cancelled'] }, source: { $ne: 'admin' }, paidAt: { $gte: since30 } }),
+    SubscriptionModel.countDocuments({ status: 'active', source: 'admin' }),
   ]);
 
   const plan = (id: string) => byPlan.find((g) => g._id === id);
@@ -73,6 +83,8 @@ export async function subscriptionsOverview(now: Date) {
       quarterly: plan('quarterly')?.n ?? 0,
     },
     needsReview,
+    payingVendors: { allTime: payersAll.length, last30Days: payersRecent.length },
+    adminGranted,
     definitions: SUBSCRIPTION_DEFINITIONS,
   };
 }
@@ -136,6 +148,7 @@ export async function listSubscriptions(query: z.infer<typeof subscriptionListQu
       return {
         id: String(r._id),
         status: r.status as string,
+        source: (r.source as string | undefined) ?? 'paystack',
         plan: r.plan as string,
         amountNaira: r.amountNaira as number,
         reference: r.paystackReference as string,

@@ -11,6 +11,10 @@ export const ADMIN_ACTIONS = [
   'report.resolve',
   'payment_query.resolve',
   'refund.mark_refunded',
+  'subscription.grant',
+  'subscription.cancel',
+  'subscription.mark_refunded',
+  'seller.set_verification',
 ] as const;
 export type AdminAction = (typeof ADMIN_ACTIONS)[number];
 

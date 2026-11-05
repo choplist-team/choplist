@@ -23,6 +23,8 @@ function toSubscriptionResponse(subscription: SubscriptionDoc) {
     plan: subscription.plan,
     amountNaira: subscription.amountNaira,
     status: subscription.status,
+    // 'paystack' (the vendor paid) or 'admin' (ChopList granted it; nothing was charged).
+    source: subscription.source ?? 'paystack',
     reference: subscription.paystackReference,
     paidAt: subscription.paidAt ?? null,
     startsAt: subscription.startsAt ?? null,

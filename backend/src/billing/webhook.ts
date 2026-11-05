@@ -1,9 +1,9 @@
 import { mongo } from 'mongoose';
 import { logEvent } from '../events/log.js';
+import { formatNaira, notifyAdmins, notifySeller } from '../notifications/service.js';
 import { SubscriptionModel, type SubscriptionDoc } from '../models/subscription.js';
 import { PaystackError, type PaystackClient } from '../payments/paystack.js';
-import { addMonthsUTC } from './dates.js';
-import { PLAN_MONTHS } from './plans.js';
+import { nextCoverWindow } from './chain.js';
 
 export type SubscriptionOutcome =
   | 'activated' // this delivery activated the subscription
@@ -56,7 +56,9 @@ export async function processSubscriptionCharge(
     return 'unknown_reference';
   }
 
-  if (subscription.status === 'active') return 'already_processed';
+  // Active: counted already. Cancelled: it was active (only an active one can be cancelled),
+  // so a replay of its webhook is just that, a replay.
+  if (subscription.status === 'active' || subscription.status === 'cancelled') return 'already_processed';
   if (subscription.status === 'needs_review') return 'ignored';
 
   let verified;
@@ -82,6 +84,11 @@ export async function processSubscriptionCharge(
 
   if (verified.currency !== 'NGN' || verified.amountKobo !== subscription.amountNaira * 100) {
     await SubscriptionModel.updateOne({ _id: subscription._id, status: { $in: ['pending', 'failed'] } }, { $set: { status: 'needs_review' } });
+    await notifyAdmins({
+      type: 'subscription_needs_review',
+      message: `A vendor's subscription payment arrived for the wrong amount (${formatNaira(verified.amountKobo / 100)}, the plan costs ${formatNaira(subscription.amountNaira)}). Nothing was activated; refund or investigate.`,
+      dedupeKey: `sub_needs_review:${subscription._id.toString()}`,
+    });
     await raise('AMOUNT_MISMATCH', 'error', 'Paystack reports a different amount than the plan costs; refund or investigate', subscription, {
       expectedKobo: subscription.amountNaira * 100,
       receivedKobo: verified.amountKobo,
@@ -97,9 +104,7 @@ export async function processSubscriptionCharge(
     //                    adds to it, nothing is lost)
     //   not covered   -> start now
     const paidAt = now();
-    const previous = await SubscriptionModel.findOne({ sellerId: subscription.sellerId, status: 'active' }).sort({ seq: -1 }).lean();
-    const startsAt = previous?.expiresAt && previous.expiresAt.getTime() > paidAt.getTime() ? previous.expiresAt : paidAt;
-    const expiresAt = addMonthsUTC(startsAt, PLAN_MONTHS[subscription.plan]);
+    const window = await nextCoverWindow(subscription.sellerId, subscription.plan, paidAt);
 
     let claimed: SubscriptionDoc | null;
     try {
@@ -109,10 +114,10 @@ export async function processSubscriptionCharge(
           $set: {
             status: 'active',
             paidAt,
-            startsAt,
-            expiresAt,
-            seq: (previous?.seq ?? 0) + 1,
-            ...(previous ? { renewalOf: previous._id } : {}),
+            startsAt: window.startsAt,
+            expiresAt: window.expiresAt,
+            seq: window.seq,
+            ...(window.renewalOf ? { renewalOf: window.renewalOf } : {}),
           },
         },
         { returnDocument: 'after' },
@@ -122,6 +127,13 @@ export async function processSubscriptionCharge(
       // the chain again so this one starts after it.
       if (isDuplicateKey(err)) continue;
       throw err;
+    }
+    if (claimed) {
+      await notifySeller(claimed.sellerId, {
+        type: 'subscription_activated',
+        message: `Your ${claimed.plan} subscription is active until ${claimed.expiresAt ? claimed.expiresAt.toISOString().slice(0, 10) : 'later'}. Thank you.`,
+        dedupeKey: `sub_active:${claimed._id.toString()}`,
+      });
     }
     return claimed ? 'activated' : 'already_processed';
   }

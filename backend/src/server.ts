@@ -2,7 +2,7 @@ import { createApp } from './app.js';
 import { createClerkAuth } from './auth/clerk.js';
 import { parseEnv, type Config } from './config.js';
 import { connectDb, disconnectDb } from './db.js';
-import { startExpirySweep } from './orders/expire.js';
+import { startMaintenance } from './jobs.js';
 import { createPaystackClient } from './payments/paystack.js';
 
 let config: Config;
@@ -22,12 +22,15 @@ try {
   process.exit(1);
 }
 
+// No key = payments off; the API still runs on bank transfer.
+const paystack = config.PAYSTACK_SECRET_KEY ? createPaystackClient(config.PAYSTACK_SECRET_KEY) : null;
+
 const app = createApp({
   allowedOrigins: config.ALLOWED_ORIGINS,
   trustProxyHops: config.TRUST_PROXY_HOPS,
   adminClerkUserIds: config.ADMIN_CLERK_USER_IDS,
-  // No key = payments off; the API still runs on bank transfer.
-  paystack: config.PAYSTACK_SECRET_KEY ? createPaystackClient(config.PAYSTACK_SECRET_KEY) : null,
+  paystack,
+  orderExpiryHours: config.ORDER_EXPIRY_HOURS,
   pricing: { freeOrders: config.FREE_ORDERS, platformFeeBps: config.PLATFORM_FEE_BPS },
   paystackCallbackUrl: config.PAYSTACK_CALLBACK_URL,
   billing: {
@@ -45,9 +48,10 @@ const app = createApp({
   }),
 });
 
-// Cancel orders nobody paid for, so their portions do not stay off sale for ever.
-// ORDER_EXPIRY_HOURS=0 turns it off.
-const expirySweep = startExpirySweep(config.ORDER_EXPIRY_HOURS);
+// The upkeep that runs on a timer: cancel orders nobody paid for (ORDER_EXPIRY_HOURS=0 turns
+// that off), re-check waiting payments whose Paystack message never came, and remind vendors
+// their subscription is ending.
+const maintenance = startMaintenance({ orderExpiryHours: config.ORDER_EXPIRY_HOURS, paystack });
 
 const server = app.listen(config.PORT, () => {
   // The count only (no values): in the Render log it shows at a glance whether
@@ -66,7 +70,7 @@ server.on('error', (err) => {
 // the database connection.
 function shutdown(signal: string) {
   console.log(`${signal} received, shutting down`);
-  expirySweep?.stop();
+  maintenance.stop();
   server.close(() => {
     disconnectDb().finally(() => process.exit(0));
   });

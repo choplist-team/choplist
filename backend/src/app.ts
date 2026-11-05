@@ -2,6 +2,7 @@ import cors from 'cors';
 import express, { type Express } from 'express';
 import helmet from 'helmet';
 import { createAdminRouter } from './admin/router.js';
+import { buildSystemCheck } from './admin/system.js';
 import type { AuthProvider } from './auth/provider.js';
 import { DEFAULT_BILLING, type BillingConfig } from './billing/plans.js';
 import { createBillingRouter } from './billing/router.js';
@@ -9,6 +10,7 @@ import { errorHandler, notFound } from './middleware/error-handler.js';
 import { DEFAULT_RATE_LIMITS, type RateLimitSettings } from './middleware/rate-limit.js';
 import { createMenuRouter } from './menus/router.js';
 import { DEFAULT_FREE_ORDERS, DEFAULT_PLATFORM_FEE_BPS } from './config.js';
+import { createNotificationsRouter } from './notifications/router.js';
 import { createOrderRouter } from './orders/router.js';
 import type { PaystackClient } from './payments/paystack.js';
 import { createWebhookHandler } from './payments/webhook.js';
@@ -42,6 +44,9 @@ export type AppOptions = {
   paystackCallbackUrl?: string;
   // Free trial length, plan prices and the subscription return page.
   billing?: BillingConfig;
+  // ORDER_EXPIRY_HOURS (0 = off). Only reported by the admin system check here; the timer
+  // that acts on it is started by the server.
+  orderExpiryHours?: number;
 };
 
 // Builds the app without listening on a port or connecting to a database,
@@ -84,7 +89,22 @@ export function createApp(options: AppOptions): Express {
   });
 
   const billing = options.billing ?? DEFAULT_BILLING;
-  app.use('/api/admin', createAdminRouter(options.auth, options.adminClerkUserIds ?? []));
+  const adminIds = options.adminClerkUserIds ?? [];
+  app.use(
+    '/api/admin',
+    createAdminRouter(options.auth, adminIds, () =>
+      buildSystemCheck({
+        paystackSecretKey: options.paystackSecretKey,
+        paystackCallbackUrl: options.paystackCallbackUrl,
+        pricing: options.pricing ?? { freeOrders: DEFAULT_FREE_ORDERS, platformFeeBps: DEFAULT_PLATFORM_FEE_BPS },
+        billing,
+        orderExpiryHours: options.orderExpiryHours ?? 0,
+        allowedOrigins: options.allowedOrigins,
+        adminCount: adminIds.length,
+      }),
+    ),
+  );
+  app.use('/api/sellers/me/notifications', createNotificationsRouter(options.auth));
   // Before the sellers router: it answers /api/sellers/me/billing and /me/share and
   // lets every other path through.
   app.use(
@@ -97,6 +117,7 @@ export function createApp(options: AppOptions): Express {
       paystack: options.paystack ?? null,
       pricing: options.pricing ?? { freeOrders: DEFAULT_FREE_ORDERS, platformFeeBps: DEFAULT_PLATFORM_FEE_BPS },
       billing,
+      rateLimits: options.rateLimits,
     }),
   );
   app.use('/api/menus', createMenuRouter(options.auth));

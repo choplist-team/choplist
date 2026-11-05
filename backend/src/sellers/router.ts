@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { assertSellerNotBlocked, authenticate, currentSellerId, currentUserId, requireSeller, requireUser } from '../auth/middleware.js';
 import type { AuthProvider } from '../auth/provider.js';
 import { DEFAULT_BILLING, type BillingConfig } from '../billing/plans.js';
+import { createRateLimiters, DEFAULT_RATE_LIMITS, type RateLimitSettings } from '../middleware/rate-limit.js';
 import { startTrial } from '../billing/state.js';
 import { DEFAULT_FREE_ORDERS, DEFAULT_PLATFORM_FEE_BPS } from '../config.js';
 import { AppError } from '../errors.js';
@@ -146,6 +147,8 @@ export type SellerRouterOptions = {
   pricing: { freeOrders: number; platformFeeBps: number };
   // Only the trial length is used here (a new seller's trial starts on creation).
   billing?: BillingConfig;
+  // For the limit on the payment-setup retry (each call spends Paystack requests).
+  rateLimits?: RateLimitSettings;
 };
 
 // The bank list barely changes; fetching it on every onboarding would be slow
@@ -160,6 +163,7 @@ export function createSellerRouter(
   router.use(authenticate(auth));
   const { paystack, pricing } = options;
   const billing = options.billing ?? DEFAULT_BILLING;
+  const limit = createRateLimiters(options.rateLimits ?? DEFAULT_RATE_LIMITS);
 
   // Sets up (or re-checks) the seller's payout account when it needs it, then
   // builds the response from the fresh seller.
@@ -231,7 +235,7 @@ export function createSellerRouter(
 
   // Try the Paystack setup again without re-saving the profile (for example
   // after Paystack was down).
-  router.post('/me/payments/retry', requireSeller, async (req, res) => {
+  router.post('/me/payments/retry', requireSeller, limit.payments, async (req, res) => {
     const seller = await SellerModel.findById(currentSellerId(req));
     if (!seller) throw new AppError(403, 'PROFILE_REQUIRED', 'Create your seller profile first');
     const result = await syncSellerPayments(seller, paystack);

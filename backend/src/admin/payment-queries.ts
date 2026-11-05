@@ -2,6 +2,7 @@ import type { Types } from 'mongoose';
 import { z } from 'zod';
 import { AppError } from '../errors.js';
 import { recordAdminAction } from '../events/log.js';
+import { notifySeller } from '../notifications/service.js';
 import { OrderModel } from '../models/order.js';
 import { PaymentQueryModel, QUERY_STATUSES } from '../models/payment-query.js';
 import { SellerModel } from '../models/seller.js';
@@ -126,7 +127,7 @@ async function loadQuery(id: Types.ObjectId) {
 // update is conditional on the query still being open, so two admins resolve it once.
 export async function resolvePaymentQuery(input: { id: Types.ObjectId; adminId: string; note?: string | undefined }) {
   const { id, adminId, note } = input;
-  const current = await PaymentQueryModel.findById(id, { status: 1 }).lean();
+  const current = await PaymentQueryModel.findById(id, { status: 1, sellerId: 1, orderRef: 1 }).lean();
   if (!current) throw new AppError(404, 'PAYMENT_QUERY_NOT_FOUND', 'Payment query not found');
   if (current.status === 'resolved') return loadQuery(id);
 
@@ -135,5 +136,13 @@ export async function resolvePaymentQuery(input: { id: Types.ObjectId; adminId: 
     { _id: id, status: 'open' },
     { $set: { status: 'resolved', resolvedBy: adminId, resolvedAt: new Date(), ...(note ? { resolutionNote: note } : {}) } },
   );
+  // Tell the seller the order is theirs (the customer has no inbox; they see it on their
+  // payment-queries page). A repeat or a lost race is the same notification, stored once.
+  await notifySeller(current.sellerId, {
+    type: 'payment_query_resolved',
+    message: `ChopList has looked at the payment problem on order ${current.orderRef}.${note ? ` Note: ${note}` : ''}`,
+    orderRef: current.orderRef,
+    dedupeKey: `query_resolved:${id.toString()}`,
+  });
   return loadQuery(id);
 }

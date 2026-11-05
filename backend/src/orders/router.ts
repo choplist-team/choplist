@@ -3,6 +3,7 @@ import { authenticate, currentSellerId, requireSeller } from '../auth/middleware
 import type { AuthProvider } from '../auth/provider.js';
 import { AppError } from '../errors.js';
 import { OrderModel, REF_PATTERN, type OrderDoc } from '../models/order.js';
+import { formatNaira, notifyAdmins } from '../notifications/service.js';
 import { listQueriesForOrder, paymentQueryBody, raisePaymentQuery } from '../support/payment-query.js';
 import { confirmDelivery, markOutForDelivery, resetDeliveryCode } from './delivery.js';
 import { confirmationFields, orderPaymentView, paymentHistory, recordPaymentEventBestEffort } from './payment-state.js';
@@ -136,6 +137,18 @@ export function createOrderRouter(auth: AuthProvider): Router {
       // Already cancelled: idempotent, same answer, no stock change.
       res.json(toSellerOrder(order));
       return;
+    }
+
+    // A paid online order was cancelled: the customer's money is with Paystack, so tell
+    // ChopList's admins now rather than leaving it for someone to spot. (The refunds
+    // list is worked out from the data either way; this only saves the looking.)
+    if (cancelled.paymentMethod === 'paystack' && cancelled.paidAt) {
+      await notifyAdmins({
+        type: 'refund_due',
+        message: `Order ${cancelled.ref} was paid online (${formatNaira(cancelled.total)}) and then cancelled by the seller. The customer needs a refund.`,
+        orderRef: cancelled.ref,
+        dedupeKey: `refund_due:${cancelled._id.toString()}`,
+      });
     }
 
     // Second write: give the stock back. Known limit: if this fails (e.g. the

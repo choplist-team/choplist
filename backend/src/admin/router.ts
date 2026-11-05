@@ -11,7 +11,18 @@ import {
   menuAnalyticsQuery,
 } from './analytics.js';
 import { auditListQuery, listAudit } from './audit.js';
+import { listNotifications, markNotificationsRead, markReadBody, notificationListQuery } from '../notifications/service.js';
 import { listSubscriptions, subscriptionListQuery } from './subscriptions.js';
+import {
+  cancelSubscription,
+  grantBody,
+  grantSubscription,
+  markSubscriptionRefunded,
+  parseSubscriptionId,
+  setVerification,
+  subscriptionNoteBody,
+  verificationBody,
+} from './subscription-actions.js';
 import { listRefunds, markRefunded, parseRefundId, refundListQuery, refundMarkBody } from './refunds.js';
 import { listPaymentQueries, paymentQueryListQuery, paymentQueryResolveBody, parsePaymentQueryId, resolvePaymentQuery } from './payment-queries.js';
 import { listOrders, orderDetail, orderDetailQuery, orderListQuery } from './orders.js';
@@ -31,7 +42,7 @@ import {
 // Everything under /api/admin. The one line below is the whole access rule:
 // every route added to this router is behind it, so a route cannot be added
 // without the check.
-export function createAdminRouter(auth: AuthProvider, adminIds: readonly string[]): Router {
+export function createAdminRouter(auth: AuthProvider, adminIds: readonly string[], systemCheck: () => unknown = () => ({})): Router {
   const router = Router();
   router.use(authenticate(auth), requireAdmin(adminIds));
 
@@ -122,9 +133,46 @@ export function createAdminRouter(auth: AuthProvider, adminIds: readonly string[
     res.json(await resolvePaymentQuery({ id: parsePaymentQueryId(req.params.id), adminId: currentAdminId(req), note }));
   });
 
+  // How this server is configured (is Paystack in test or live mode? are the return pages set?),
+  // with warnings. Never a secret.
+  router.get('/system', (_req, res) => {
+    res.set('Cache-Control', 'no-store');
+    res.json(systemCheck());
+  });
+
+  // ---- ChopList's own inbox (refunds due, payment problems, money to look at) ----
+  router.get('/notifications', async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    res.json(await listNotifications({ audience: 'admin' }, notificationListQuery.parse(req.query)));
+  });
+
+  router.post('/notifications/read', async (req, res) => {
+    res.json(await markNotificationsRead({ audience: 'admin' }, markReadBody.parse(req.body ?? {})));
+  });
+
   // ---- Vendor subscriptions ----
   router.get('/subscriptions', async (req, res) => {
     res.json(await listSubscriptions(subscriptionListQuery.parse(req.query)));
+  });
+
+  router.post('/sellers/:id/subscriptions', async (req, res) => {
+    const { plan, note } = grantBody.parse(req.body);
+    res.status(201).json(await grantSubscription({ sellerId: parseSellerId(req.params.id), adminId: currentAdminId(req), plan, note }));
+  });
+
+  router.patch('/subscriptions/:id/cancel', async (req, res) => {
+    const { note } = subscriptionNoteBody.parse(req.body ?? {});
+    res.json(await cancelSubscription({ id: parseSubscriptionId(req.params.id), adminId: currentAdminId(req), note }));
+  });
+
+  router.patch('/subscriptions/:id/mark-refunded', async (req, res) => {
+    const { note } = subscriptionNoteBody.parse(req.body ?? {});
+    res.json(await markSubscriptionRefunded({ id: parseSubscriptionId(req.params.id), adminId: currentAdminId(req), note }));
+  });
+
+  router.patch('/sellers/:id/verification', async (req, res) => {
+    const { status, note } = verificationBody.parse(req.body);
+    res.json(await setVerification({ sellerId: parseSellerId(req.params.id), adminId: currentAdminId(req), status, note }));
   });
 
   // ---- Refunds owed to customers (done by hand in Paystack, recorded here) ----

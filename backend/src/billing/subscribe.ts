@@ -17,6 +17,13 @@ export function newSubscriptionReference(): string {
   return `CLS-${randomBytes(12).toString('hex')}`;
 }
 
+// A subscription an admin granted has no Paystack payment, but the field is required
+// and unique, so it gets a reference of its own. The different prefix means the webhook
+// and the vendor status page never mistake it for a Paystack one.
+export function newGrantReference(): string {
+  return `ADM-${randomBytes(12).toString('hex')}`;
+}
+
 // Used only when the vendor has no email of their own and the login account has
 // none either. It belongs to the vendor, not a mailbox: Paystack's receipts for
 // it go nowhere.
