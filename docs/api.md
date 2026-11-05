@@ -78,6 +78,8 @@ Every error, on every route, has this shape:
 | 409 | `ORDERING_CLOSED` | The menu is closed, not yet open, or past its cut-off |
 | 409 | `SOLD_OUT` | Not enough stock for at least one item; nothing was taken. The message names it, e.g. `Not enough left: only 2 Jollof rice left` |
 | 409 | `ORDER_CANCELLED` | Paying (by hand or online), reporting a payment on, sending out or confirming a cancelled order |
+| 409 | `TRIAL_NOT_STARTED` | Setting a seller's verification before their free trial has started (admin) |
+| 409 | `SUBSCRIPTION_CANNOT_CHANGE` | Cancelling a subscription that is not active, or marking refunded one that is not a cancelled or needs-review Paystack payment (admin) |
 | 409 | `QUERY_ALREADY_OPEN` | The same person already has an open payment query on this order (one at a time) |
 | 409 | `ORDER_ALREADY_PAID` | Starting an online payment for an order that is already paid (or further along) |
 | 409 | `PAYMENTS_NOT_READY` | Starting an online payment for a seller who does not take them yet (not set up, suspended or deactivated). The message tells the customer to use bank transfer. Offer transfer instead |
@@ -318,8 +320,9 @@ their shop link **through the app**.
   created (the first `PUT /api/sellers/me`), not from signing up with Clerk.
 - **Verification** begins after the trial ends. ChopList records its status
   (`not_started`, `pending`, `verified`, `rejected`) and **nothing depends on it yet**:
-  it does not block selling, sharing or paying. Nothing in the API changes it yet either.
-  Who verifies vendors, how, and what "verified" unlocks are open product decisions.
+  it does not block selling, sharing or paying. An admin can set it (see
+  [Admin: managing subscriptions](#admin-managing-subscriptions-and-verification)). Who verifies
+  vendors, how, and what "verified" unlocks are still open product decisions.
 - **Plans:** monthly **₦3,000**, quarterly **₦11,000**, as the project description says.
   Note the quarterly plan costs more than three months at the monthly price (₦9,000),
   so it is not a saving. Both prices are settings, in whole naira.
@@ -430,7 +433,8 @@ The vendor's own attempts and renewals, newest first (up to 100).
 `status` is `pending` (started, not confirmed), `active` (confirmed), `failed` (Paystack
 reported the charge failed; a later success on the same payment still activates it) or
 `needs_review` (money arrived but could not be activated, for example the amount was
-wrong: ChopList must look at it). There is no `expired` status: a subscription has
+wrong: ChopList must look at it) or `cancelled` (an admin ended it). `source` is `paystack`
+(the vendor paid) or `admin` (ChopList granted it for free; `amountNaira` is 0). There is no `expired` status: a subscription has
 expired when `expiresAt` is in the past. `renewalOf` is the confirmed subscription this
 one follows.
 
@@ -1214,7 +1218,8 @@ Response `200`:
 ```
 
 - `action` is one of `seller.suspend`, `seller.deactivate`, `seller.reinstate`,
-  `order.reveal_phone`, `report.resolve`, `payment_query.resolve`, `refund.mark_refunded`.
+  `order.reveal_phone`, `report.resolve`, `payment_query.resolve`, `refund.mark_refunded`, `subscription.grant`, `subscription.cancel`,
+`subscription.mark_refunded`, `seller.set_verification`.
 - `targetType` is `seller`, `order` or `report`. `targetId` is a seller id, an order
   reference or a report id. `targetLabel` is the seller's business name for seller
   actions (`null` if that seller no longer exists), the reference for orders, and
@@ -1905,6 +1910,10 @@ Errors: `400 VALIDATION_ERROR` (`phoneLast4` missing or not 4 digits),
 
 ### POST /api/public/orders/:ref/pay
 
+> **Optional body: `{ "email": "customer@example.com" }`.** If given, Paystack receives the customer's own address so its receipt
+> reaches them; if not, a placeholder is used as before. The email is passed to Paystack and **not stored** by ChopList. A bad address is `400 VALIDATION_ERROR`
+> and nothing is started.
+
 Starts paying an order online with Paystack. Needs the order's access key (the
 `accessKey` from `POST /api/public/orders`) in the `X-Order-Key` header: the reference
 and phone digits are also known to the seller, so they are not enough. No body.
@@ -1954,6 +1963,20 @@ all the same answer), `409 ORDER_CANCELLED`, `409 ORDER_ALREADY_PAID`,
 `409 PAYMENTS_NOT_READY` (this seller takes bank transfer only; show the transfer
 instructions), `503 PAYMENTS_UNAVAILABLE` (Paystack is down or payments are off; show
 the transfer instructions and a retry), `429 RATE_LIMITED`.
+
+### GET /api/public/orders/:ref/payment-quote
+
+What paying online **would** cost, before the customer commits. Needs `X-Order-Key` (every way of being wrong is the same `404 ORDER_NOT_FOUND`).
+It changes nothing: no payment is started, Paystack is not called, nothing is saved. Never cached. The figures are exactly what pressing Pay then charges.
+
+```json
+{ "ref": "CL-7KQ2M", "onlinePaymentAvailable": true, "payable": true, "orderTotal": 7500, "serviceFee": 216, "total": 7716, "feePayer": "customer" }
+```
+
+- `serviceFee` is the extra for the card fee (0 when the seller covers it, `feePayer: "seller"`). `total` is the whole amount they would be charged.
+- When online payment is not available (switched off, or the seller is not set up) or the order is no longer payable (paid or cancelled),
+  `serviceFee`, `total` and `feePayer` are `null`; `onlinePaymentAvailable` and `payable` say which. Show the bank transfer instead.
+- Show this on the order page **before** the Pay button, so the customer is never surprised by the extra fee.
 
 ### GET /api/public/orders/:ref/payment-status
 
@@ -2278,6 +2301,110 @@ payment-queries page. **Who that is has not been decided.** Real notifications a
   billing whose trial has not started), `canShareLink`, the trial dates, `subscription`, `accessEndsAt` and `verification`.
   Looking at a vendor **never** starts their trial.
 
+### Admin: managing subscriptions and verification
+
+Every action writes its audit entry **first** (if it cannot be recorded, nothing happens), is for admins only, and moves
+**no money**: granting charges nothing, and cancelling or recording a refund only change ChopList's records.
+
+- **`POST /api/admin/sellers/:id/subscriptions`** with `{ "plan": "monthly" | "quarterly", "note": "..." }` (the note, 3 to 300
+  characters, is **required**: a free subscription needs a reason on record). Gives the vendor free cover starting where their
+  current cover ends, or now: the same rule as a paid renewal. Response `201`: the subscription (`source: "admin"`,
+  `amountNaira: 0`, `reference` starting `ADM-`). It counts as cover but **never as income** (not in `revenue`, `purchases` or
+  `payingVendors`; it is counted in `adminGranted`). **Not idempotent on purpose:** two grants are two periods. The vendor is
+  notified. `404 SELLER_NOT_FOUND`, `400 VALIDATION_ERROR`.
+- **`PATCH /api/admin/subscriptions/:id/cancel`** with an optional `{ "note": "..." }`. Ends an **active** subscription now: it stops
+  covering the vendor straight away and the vendor is notified. Any later period already bought stays as it is. Cancelling
+  does **not** refund anything. Safe to repeat. A subscription that is not active is `409 SUBSCRIPTION_CANNOT_CHANGE` (a waiting one
+  has nothing to end, and a payment might still arrive for it).
+- **`PATCH /api/admin/subscriptions/:id/mark-refunded`** with an optional `{ "note": "..." }`. Records that an admin refunded a
+  subscription payment by hand in the Paystack dashboard. Only a **cancelled** or **needs-review** Paystack payment can be marked
+  (`409 SUBSCRIPTION_CANNOT_CHANGE` otherwise, and for a free grant, which has no money). Safe to repeat: the first note and time are
+  kept. A marked needs-review payment leaves `subscriptions.needsReview`.
+- **`PATCH /api/admin/sellers/:id/verification`** with `{ "status": "not_started" | "pending" | "verified" | "rejected", "note": "..." }`.
+  Records the status with its times (`startedAt` when it first leaves `not_started`, `completedAt` for `verified` and `rejected`,
+  cleared if it goes back). It is **only recorded: it blocks and unlocks nothing**. Setting the status it already has changes nothing and
+  adds no audit entry. A seller whose free trial has not started is `409 TRIAL_NOT_STARTED`, and this never starts a trial.
+
+The overview's `subscriptions` block also has `payingVendors` (vendors who have paid at least once, all time and last 30 days) and
+`adminGranted`.
+
+### Notifications (inside the app)
+
+There is no email or push yet. Instead, important things are written as notifications that the app can show (a bell), and they are stored
+as rows so an email or push sender can be added later. A notification is plain English and carries an order reference or an amount, **never a
+customer's name, phone or address, and never a secret**. Saving one can never make a payment or an action fail, and the same event notified twice is stored once.
+
+**A seller's own feed**: `GET /api/sellers/me/notifications?unread=true&limit=30` (never cached) and
+`POST /api/sellers/me/notifications/read` with `{ "ids": ["..."] }` or `{ "all": true }`.
+
+```json
+{
+  "notifications": [
+    { "id": "6712...", "type": "order_paid_online", "message": "Order CL-7KQ2M was paid online (₦7,500). You can prepare it.", "orderRef": "CL-7KQ2M", "read": false, "createdAt": "2026-11-12T10:03:21.000Z" }
+  ],
+  "unreadCount": 1
+}
+```
+
+`POST .../read` answers `{ "marked": 1, "unreadCount": 0 }`. A seller sees and changes only their **own**; sending another seller's ids, or the admin inbox's,
+changes nothing.
+
+| `type` (seller) | When |
+| --------------- | ---- |
+| `order_paid_online` | An order was paid through Paystack |
+| `customer_reported_paid` | A customer says they paid by transfer: check the bank, then mark it paid |
+| `payment_query_raised` | A customer reported a payment problem on their order |
+| `payment_query_resolved` | ChopList replied to a payment problem on their order |
+| `subscription_activated` | Their subscription is active (paid, or granted) |
+| `subscription_expiring` | Their paid cover ends within 3 days, once per end date |
+| `subscription_cancelled` | ChopList ended their subscription |
+
+**ChopList's admin inbox** (shared by all admins): `GET /api/admin/notifications?unread=true&limit=30` and `POST /api/admin/notifications/read`.
+
+| `type` (admin) | When |
+| -------------- | ---- |
+| `refund_due` | A seller cancelled an order that was paid online: the customer needs a refund |
+| `payment_needs_review` | Money arrived that could not be applied (wrong amount, order cancelled first, paid twice) |
+| `payment_query_raised` | A customer or seller reported a payment problem |
+| `subscription_needs_review` | A subscription payment arrived but could not be activated |
+
+Show the unread count somewhere visible. These are **in addition to** the event log and the overview counts, which are unchanged.
+
+### Admin: is this set up right?
+
+**`GET /api/admin/system`** (never cached). How the running server is configured, so a deployment can be checked without opening Render:
+
+```json
+{
+  "paystack": { "configured": true, "mode": "test" },
+  "returnPages": { "payment": true, "subscription": false },
+  "shareUrlBaseSet": true,
+  "pricing": { "platformFeeBps": 0, "freeOrders": 50 },
+  "billing": { "trialDays": 7, "monthlyNaira": 3000, "quarterlyNaira": 11000 },
+  "orderExpiryHours": 48,
+  "allowedOriginCount": 3,
+  "adminCount": 2,
+  "warnings": [ { "code": "NO_SUBSCRIPTION_RETURN_PAGE", "message": "SUBSCRIPTION_CALLBACK_URL is not set: ..." } ]
+}
+```
+
+`mode` is `test`, `live`, `unknown` or `null` (no key), worked out from the key's prefix. **It never shows a key or any part of one, nor any URL.**
+Warning codes: `PAYSTACK_OFF`, `PAYSTACK_LIVE_KEY`, `PAYSTACK_KEY_UNRECOGNISED`, `NO_PAYMENT_RETURN_PAGE`, `NO_SUBSCRIPTION_RETURN_PAGE`,
+`NO_SHARE_URL_BASE`, `PLATFORM_FEE_ON`, `ORDER_EXPIRY_ON`, `NO_ADMINS`. A good first check after every deploy. `PAYSTACK_LIVE_KEY` should
+be a deliberate choice.
+
+### Background upkeep
+
+Every 15 minutes the server does three things, each independent (one failing never stops the others), and each safe if several servers run:
+
+1. **Cancels unpaid orders** past `ORDER_EXPIRY_HOURS` (see Expiry above).
+2. **Re-checks waiting payments nobody is looking at.** The lost-webhook fallback on the status routes only runs when someone checks; this covers a
+   customer who paid and closed the page. Each waiting order payment or subscription payment is asked about **at most six times, ever**, with growing
+   gaps (about 2 min, 17 min, 1 h 17 min, 4 h 17 min, 10 h 17 min and 22 h 17 min after it was started), at most 50 Paystack calls per sweep, and
+   not after 48 hours (7 days for a subscription). If Paystack says it succeeded, it is applied by the same code the webhook uses, so it is counted once.
+   Abandoned checkouts therefore cost six calls, not hundreds.
+3. **Reminds vendors** (a `subscription_expiring` notification) 3 days before their paid cover ends, once per end date.
+
 ## Paystack webhook
 
 `POST /api/webhooks/paystack` is called by **Paystack's servers**, never by the
@@ -2502,6 +2629,17 @@ transfer keeps working unchanged**: until the frontend ships these, nothing brea
     new `subscriptions` block on the overview, a **subscriptions page** (`GET /api/admin/subscriptions`), `billing` on the vendor
     page, and the payments, history and refund on the order detail.
 
+**Notifications, fee preview, admin tools**
+
+25. A **bell** for sellers from `GET /api/sellers/me/notifications` (unread count, list, mark read), and one for the admin inbox
+    (`GET /api/admin/notifications`).
+26. **Before the Pay button**, call `GET /api/public/orders/:ref/payment-quote` and show "Total ₦7,716 (₦7,500 + ₦216 card fee)", or just the
+    order total when the seller covers the fee. Send the customer's `email` (optional) with `POST /pay` so Paystack's receipt reaches them.
+27. Admin vendor page: **grant**, **cancel** and **mark refunded** buttons for subscriptions, and a **verification** selector with a note.
+    A grant needs a reason. Show `source` ("Paid" or "Granted by ChopList") on subscription lists, and the new `cancelled` status.
+28. Admin overview: show `subscriptions.payingVendors` and `adminGranted`.
+29. Admin **"System check"** page from `GET /api/admin/system`: show `warnings`, make `PAYSTACK_LIVE_KEY` stand out, and show the test or live badge.
+
 **Admin**
 
 10. Show the `payments` and `funnel` blocks of `GET /api/admin/overview` with their
@@ -2529,11 +2667,8 @@ Not built, on purpose. Be upfront about these when presenting.
 - **The lost-webhook fallback costs Paystack calls**, at most one per waiting payment per 15 seconds, and only
   while someone is checking its status. A payment nobody checks and whose webhook never came stays waiting until
   someone does (or Paystack resends).
-- **No fee preview.** The customer sees the service fee only after pressing Pay. A
-  separate quote route would show it first.
-- **Fake payer email.** Paystack requires one, customers do not give one, so each
-  payment uses `<ref>@orders.choplistafrica.com`. Paystack's receipts go nowhere.
-  Collecting a real email needs a frontend change.
+- **The fee preview and the customer email need the frontend.** `payment-quote` shows the fee before Pay, and `POST /pay` accepts an
+  `email`, but until the screens use them the customer sees the fee only after pressing Pay and Paystack's receipt goes to a placeholder address.
 - **The "4.5% total" claim is true only for large orders.** The ₦100 flat fee dominates
   small orders. In `customer` mode on the 3% tier the customer's extra is about 5.9% of
   a ₦7,500 order, 5.5% of ₦11,000, and 4.8% of ₦50,000. In `seller` mode the seller
@@ -2550,7 +2685,6 @@ Not built, on purpose. Be upfront about these when presenting.
 - **A seller marking an order paid by hand while an online payment is in progress**
   is not blocked. If the customer then pays online, that payment is flagged for refund.
 - **The webhook trusts the signature only,** not Paystack's sending addresses.
-- **The retry route has no limit of its own.** Each call spends a few Paystack requests.
 - **"Profile complete" in the funnel equals "registered"** today (see the admin overview).
 - **With the per-order fee off, some admin figures read zero or lose meaning:** `revenue`,
   `payingSellers` and the funnel's paying stage are built from the per-order fee, so they
@@ -2560,12 +2694,11 @@ Not built, on purpose. Be upfront about these when presenting.
   decision for the team to confirm.
 - **The quarterly plan costs more than three months of the monthly plan** (₦11,000 against ₦9,000), as
   the project description says. If that was not intended, change `SUBSCRIPTION_QUARTERLY_NAIRA`.
-- **Verification is recorded, not run.** Nothing sets it, and nothing depends on it.
-- **Admins can see subscriptions but not change them:** no way to grant, extend or cancel one by hand. A
-  `needs_review` subscription shows in the list and the overview's `subscriptions.needsReview`; refunding it is done
-  in the Paystack dashboard and is not recorded in ChopList.
-- **No refunds for subscriptions** (manual in Paystack), and cancelling a subscription is
-  not built: it simply runs to its expiry and is not renewed.
+- **Verification is recorded, not run.** An admin can set it, but nothing depends on it, and who verifies and what it unlocks is undecided.
+- **No automatic renewal.** A vendor pays again by hand each period; the only help is the reminder 3 days before. Recurring billing needs Paystack
+  to store the vendor's card for reuse, which has not been built or tested.
+- **Subscription refunds are tracked, not made** (an admin refunds in the Paystack dashboard, then records it), and an admin can grant, cancel and
+  record a refund but not edit a subscription's dates.
 - **Paying during the trial** does not add the remaining trial days.
 - **Abandoned subscription attempts stay `pending`** forever. They do nothing, but they
   accumulate in the vendor's history.
@@ -2577,9 +2710,9 @@ Not built, on purpose. Be upfront about these when presenting.
   just carries on, unused.
 - **Cancelling a paid online order still needs a person** to refund it (see Refunds), and whether to automate or
   forbid it is undecided.
-- **Nobody is assigned to payment queries, and nobody is messaged.** The platform has no email or push, so raising a
-  query only writes an event-log line and raises the overview's `openPaymentQueries`. The people who raised one can
-  see its status and the admin's reply, but are not told when it changes.
+- **Notifications are in-app only.** There is no email or push: sellers and the admin inbox get notifications to show in the app, and the people who
+  raised a payment query are not told by any other channel. Nobody is *assigned* to payment queries, refunds or money to look at; whoever opens the
+  admin console sees them. A customer has no inbox (they have no account), so they only see a query's reply on the page they read it.
 - **"I've paid" is a claim.** Nothing checks it against the bank. A customer can press it without paying;
   that is why the seller still confirms and the order stays `pending`.
 - **`failed` is rare.** It is only set when Paystack's own confirmation of a payment says it failed; an

@@ -387,6 +387,16 @@ More fields and routes; the contract is in [api.md](api.md) under **Refunds, exp
 - **Orders can be cancelled automatically** when nobody pays within 48 hours (a setting). Sellers will see these as cancelled with
   `cancelReason: "expired"`.
 
+### Notifications, fee preview and admin tools
+
+More routes; the contract is in [api.md](api.md) under **Refunds, expiry, history and queries** and **Notifications**.
+
+- **A bell.** Sellers: `GET /sellers/me/notifications` (and `POST .../read`). Admins have a shared inbox at `GET /admin/notifications`. There is no email or push yet.
+- **Show the price before Pay.** `GET /public/orders/:ref/payment-quote` (with the order key) gives `orderTotal`, `serviceFee` and `total`, so the customer is not surprised by the card fee.
+  Send an optional `email` with `POST /pay` so Paystack's receipt reaches them.
+- **Admin vendor page.** Grant, cancel and mark-refunded buttons for subscriptions, and a verification selector. A grant needs a reason.
+- **Admin system check.** `GET /admin/system` lists warnings (a live Paystack key, a missing return page...). Make the live-key warning impossible to miss.
+
 ## 6. Checking your work
 
 - **Customer path:** build against `demo-kitchen`. Placing orders there is fine;

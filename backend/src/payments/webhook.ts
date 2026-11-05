@@ -8,6 +8,7 @@ import { logEvent } from '../events/log.js';
 import { OrderModel } from '../models/order.js';
 import { PaymentModel, type PaymentDoc } from '../models/payment.js';
 import { SellerModel } from '../models/seller.js';
+import { formatNaira, notifyAdmins, notifySeller } from '../notifications/service.js';
 import { confirmationFields, orderPaymentView, recordPaymentEvent } from '../orders/payment-state.js';
 import { PaystackError, type PaystackClient } from './paystack.js';
 
@@ -39,7 +40,18 @@ export type WebhookOutcome =
 
 type Severity = 'warn' | 'error';
 
+// The problems where the customer's money is with Paystack and cannot be applied.
+const MONEY_HELD_CODES = new Set(['ORDER_NOT_PAYABLE', 'AMOUNT_MISMATCH', 'DUPLICATE_PAYMENT']);
+
 async function raise(code: string, level: Severity, message: string, payment: PaymentDoc | null, meta: Record<string, unknown> = {}) {
+  if (payment && MONEY_HELD_CODES.has(code)) {
+    await notifyAdmins({
+      type: 'payment_needs_review',
+      message: `Money arrived for order ${payment.orderRef} but could not be applied (${code.toLowerCase().replace(/_/g, ' ')}). Refund it or investigate.`,
+      orderRef: payment.orderRef,
+      dedupeKey: `needs_review:${payment._id.toString()}`,
+    });
+  }
   await logEvent({
     type: 'payment_webhook_issue',
     level,
@@ -122,6 +134,12 @@ async function finishOrder(payment: PaymentDoc): Promise<WebhookOutcome> {
     // $inc is atomic, and only the one request that flipped pending -> paid gets here.
     await SellerModel.updateOne({ _id: payment.sellerId }, { $inc: { paidOrderCount: 1 } });
     await recordPaymentEvent(paidEvent(payment, orderPaymentView(before).status));
+    await notifySeller(payment.sellerId, {
+      type: 'order_paid_online',
+      message: `Order ${before.ref} was paid online (${formatNaira(before.total)}). You can prepare it.`,
+      orderRef: before.ref,
+      dedupeKey: `order_paid:${before._id.toString()}`,
+    });
     return 'paid';
   }
 

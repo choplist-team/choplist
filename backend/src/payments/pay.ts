@@ -42,10 +42,24 @@ function assertPayable(status: string): void {
   throw new AppError(409, 'ORDER_ALREADY_PAID', 'This order is already paid');
 }
 
+// What paying this order online would cost RIGHT NOW, from the seller's fee mode and
+// the order total. The same figures startPayment freezes on the order, so a preview
+// and the real payment cannot disagree (the 'free tier' no longer exists while the
+// per-order fee is 0, but the calculator still handles it).
+export function quoteFor(order: Pick<OrderDoc, 'total'>, seller: SellerDoc, pricing: PayOptions['pricing']) {
+  return calculateFees({
+    baseNaira: order.total,
+    feeMode: sellerFeeMode(seller),
+    paidOrderCount: sellerPaidOrderCount(seller),
+    freeOrders: pricing.freeOrders,
+    platformFeeBps: pricing.platformFeeBps,
+  });
+}
+
 // Works out what this payment costs, freezes that on the order, asks Paystack to
 // set up the split payment and records it. Nothing is marked paid here: only the
 // webhook does that, after Paystack confirms the money.
-export async function startPayment(order: OrderDoc, seller: SellerDoc, options: PayOptions): Promise<StartedPayment> {
+export async function startPayment(order: OrderDoc, seller: SellerDoc, options: PayOptions, payerEmail?: string): Promise<StartedPayment> {
   const { paystack, pricing, callbackUrl } = options;
   if (!paystack) throw new AppError(503, 'PAYMENTS_UNAVAILABLE', 'Online payment is not available right now. Pay by bank transfer instead.');
 
@@ -58,13 +72,7 @@ export async function startPayment(order: OrderDoc, seller: SellerDoc, options: 
 
   // The tier is decided now, from the seller's paid-order count at this moment,
   // and frozen on the order below (later config changes never touch it).
-  const quote = calculateFees({
-    baseNaira: order.total,
-    feeMode: sellerFeeMode(seller),
-    paidOrderCount: sellerPaidOrderCount(seller),
-    freeOrders: pricing.freeOrders,
-    platformFeeBps: pricing.platformFeeBps,
-  });
+  const quote = quoteFor(order, seller, pricing);
 
   // The write that decides whether this order can still be paid. It only matches
   // a pending order, so a seller cancelling at the same moment cannot be missed.
@@ -89,7 +97,9 @@ export async function startPayment(order: OrderDoc, seller: SellerDoc, options: 
   let authorizationUrl: string;
   try {
     ({ authorizationUrl } = await paystack.initializeTransaction({
-      email: `${order.ref.toLowerCase()}@${PAYER_EMAIL_DOMAIN}`,
+      // The customer's own address if they gave one (so Paystack's receipt reaches them),
+      // else the placeholder. It is passed to Paystack and not stored by ChopList.
+      email: payerEmail ?? `${order.ref.toLowerCase()}@${PAYER_EMAIL_DOMAIN}`,
       amountKobo: quote.totalKobo,
       reference,
       subaccountCode: seller.paystackSubaccountCode,

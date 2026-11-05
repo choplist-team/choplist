@@ -45,7 +45,7 @@ export async function reconcileOrderPayment(orderId: Types.ObjectId, paystack: P
           status: 'initialized',
           $or: [{ lastCheckedAt: { $exists: false } }, { lastCheckedAt: { $lte: new Date(now.getTime() - RECONCILE_INTERVAL_MS) } }],
         },
-        { $set: { lastCheckedAt: now } },
+        { $set: { lastCheckedAt: now }, $inc: { checkCount: 1 } },
         { returnDocument: 'after' },
       );
       if (!claimed) continue;
@@ -77,7 +77,7 @@ export async function reconcileSubscription(subscriptionId: Types.ObjectId, pays
         createdAt: { $lte: new Date(now.getTime() - RECONCILE_MIN_AGE_MS) },
         $or: [{ lastCheckedAt: { $exists: false } }, { lastCheckedAt: { $lte: new Date(now.getTime() - RECONCILE_INTERVAL_MS) } }],
       },
-      { $set: { lastCheckedAt: now } },
+      { $set: { lastCheckedAt: now }, $inc: { checkCount: 1 } },
       { returnDocument: 'after' },
     );
     if (!claimed) return;

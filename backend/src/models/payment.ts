@@ -69,6 +69,8 @@ const paymentSchema = new Schema(
     // When the status route last asked Paystack about this payment, so a customer
     // polling every few seconds costs at most one Paystack call per interval.
     lastCheckedAt: Date,
+    // How many times the background re-check has asked (it backs off as this grows).
+    checkCount: { type: Number, default: 0, min: 0 },
   },
   { timestamps: true },
 );

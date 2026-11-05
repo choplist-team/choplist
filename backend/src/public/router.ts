@@ -1,6 +1,6 @@
 import { Router, type Request } from 'express';
 import { Types } from 'mongoose';
-import { ZodError } from 'zod';
+import { z, ZodError } from 'zod';
 import { AppError } from '../errors.js';
 import { MenuModel, type MenuDoc } from '../models/menu.js';
 import { OrderModel, REF_PATTERN, type OrderDoc } from '../models/order.js';
@@ -9,7 +9,7 @@ import { recordMenuView } from '../analytics/record-view.js';
 import { logEvent } from '../events/log.js';
 import { accessKeyMatches, generateAccessKey } from '../orders/delivery-code.js';
 import { placeOrder } from '../orders/place-order.js';
-import { startPayment, type PayOptions } from '../payments/pay.js';
+import { quoteFor, startPayment, type PayOptions } from '../payments/pay.js';
 import { reconcileOrderPayment } from '../payments/reconcile.js';
 import { buildPaymentStatus } from '../payments/status.js';
 import { PaymentModel } from '../models/payment.js';
@@ -129,6 +129,9 @@ async function recordFailedOrder(err: unknown, body: unknown): Promise<void> {
   });
 }
 
+// The only thing /pay reads from the body.
+const payBodySchema = z.object({ email: z.email({ error: 'Enter a valid email address' }).max(120).transform((v) => v.toLowerCase()).optional() });
+
 export function createPublicRouter(rateLimits: RateLimitSettings, pay: PayOptions = { paystack: null, pricing: { freeOrders: 0, platformFeeBps: 0 } }): Router {
   const router = Router();
   const limit = createRateLimiters(rateLimits);
@@ -218,7 +221,41 @@ export function createPublicRouter(rateLimits: RateLimitSettings, pay: PayOption
     const seller = await SellerModel.findById(order.sellerId);
     if (!seller) throw new Error(`Seller ${order.sellerId.toString()} missing for order ${order.ref}`);
 
-    res.json(await startPayment(order, seller, pay));
+    // Optional: the customer's email, so Paystack's receipt reaches them. Not stored.
+    const { email } = payBodySchema.parse(req.body ?? {});
+    res.json(await startPayment(order, seller, pay, email));
+  });
+
+  // What paying online WOULD cost, before the customer commits: the order total, the
+  // card fee they would be asked to cover (or 0 if the seller covers it), and the final
+  // amount. Changes nothing: no payment is started, Paystack is not called, nothing is
+  // saved on the order. Same key rule as /pay.
+  router.get('/orders/:ref/payment-quote', limit.status, async (req, res) => {
+    const order = await orderForKey(req);
+    const seller = await SellerModel.findById(order.sellerId);
+    if (!seller) throw new Error(`Seller ${order.sellerId.toString()} missing for order ${order.ref}`);
+
+    const available = pay.paystack !== null && isSellerActive(seller) && sellerPaymentsReady(seller);
+    const payable = order.status === 'pending';
+    res.set('Cache-Control', 'no-store');
+    if (!available || !payable) {
+      res.json({ ref: order.ref, onlinePaymentAvailable: available, payable, orderTotal: order.total, serviceFee: null, total: null, feePayer: null });
+      return;
+    }
+    const quote = quoteFor(order, seller, pay.pricing);
+    res.json({
+      ref: order.ref,
+      onlinePaymentAvailable: true,
+      payable: true,
+      // The food, in naira, exactly as ordered.
+      orderTotal: order.total,
+      // Extra the customer pays for the card fee (0 when the seller covers it).
+      serviceFee: quote.serviceFee,
+      // The whole amount they would be charged.
+      total: quote.totalNaira,
+      // Who bears the card fee: the customer (a service fee is added) or the seller.
+      feePayer: quote.feeMode,
+    });
   });
 
   // The order for a request that proves it is the customer: the ref in the URL and the

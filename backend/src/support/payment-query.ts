@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { AppError } from '../errors.js';
 import { mongo } from 'mongoose';
 import { logEvent } from '../events/log.js';
+import { notifyAdmins, notifySeller } from '../notifications/service.js';
 import { PaymentQueryModel, QUERY_REASONS, type PaymentQueryDoc, type QueryRaiser } from '../models/payment-query.js';
 
 // What a customer or a seller sends to say "something is wrong with this payment".
@@ -67,6 +68,22 @@ export async function raisePaymentQuery(
       orderRef: order.ref,
       meta: { raisedBy },
     });
+    const reason = input.reason.replace(/_/g, ' ');
+    await notifyAdmins({
+      type: 'payment_query_raised',
+      message: `A ${raisedBy} reported a payment problem on order ${order.ref} (${reason}).`,
+      orderRef: order.ref,
+      dedupeKey: `query_admin:${created._id.toString()}`,
+    });
+    // The seller hears about a customer's report. They raised their own, so no need.
+    if (raisedBy === 'customer') {
+      await notifySeller(order.sellerId, {
+        type: 'payment_query_raised',
+        message: `A customer reported a payment problem on order ${order.ref} (${reason}). ChopList has been told.`,
+        orderRef: order.ref,
+        dedupeKey: `query_seller:${created._id.toString()}`,
+      });
+    }
     return toQueryResponse(created);
   } catch (err) {
     if (err instanceof mongo.MongoServerError && err.code === 11000) {

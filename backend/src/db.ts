@@ -4,6 +4,7 @@ import { AdminAuditModel } from './models/admin-audit.js';
 import { EventLogModel } from './models/event-log.js';
 import { MenuViewDailyModel } from './models/menu-view-daily.js';
 import { MissingOrderReportModel } from './models/missing-order-report.js';
+import { NotificationModel } from './models/notification.js';
 import { OrderModel } from './models/order.js';
 import { OrderPaymentEventModel } from './models/order-payment-event.js';
 import { PaymentModel } from './models/payment.js';
@@ -26,6 +27,7 @@ export const models = [
   SubscriptionModel,
   OrderPaymentEventModel,
   PaymentQueryModel,
+  NotificationModel,
 ];
 
 export async function connectDb(uri: string): Promise<void> {

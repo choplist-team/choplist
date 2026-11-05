@@ -1,6 +1,7 @@
 import { mongo, type Types } from 'mongoose';
 import { AppError } from '../errors.js';
 import { OrderModel, type OrderDoc, type OrderPaymentStatus, type PaymentConfirmer } from '../models/order.js';
+import { formatNaira, notifySeller } from '../notifications/service.js';
 import { OrderPaymentEventModel, type PaymentEventSource } from '../models/order-payment-event.js';
 
 // An order's order-status values that mean its money has been confirmed.
@@ -142,6 +143,12 @@ export async function reportPaidByCustomer(
       source: 'customer',
       eventId: `customer_reported:${order._id.toString()}`,
       at: now,
+    });
+    await notifySeller(before.sellerId, {
+      type: 'customer_reported_paid',
+      message: `A customer says they paid order ${order.ref} (${formatNaira(before.total)}) by bank transfer. Check your account, then mark it paid.`,
+      orderRef: order.ref,
+      dedupeKey: `reported:${order._id.toString()}`,
     });
     const after = await OrderModel.findById(order._id);
     return { order: after ?? before, changed: true };
