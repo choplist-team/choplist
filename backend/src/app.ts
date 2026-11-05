@@ -3,6 +3,8 @@ import express, { type Express } from 'express';
 import helmet from 'helmet';
 import { createAdminRouter } from './admin/router.js';
 import type { AuthProvider } from './auth/provider.js';
+import { DEFAULT_BILLING, type BillingConfig } from './billing/plans.js';
+import { createBillingRouter } from './billing/router.js';
 import { errorHandler, notFound } from './middleware/error-handler.js';
 import { DEFAULT_RATE_LIMITS, type RateLimitSettings } from './middleware/rate-limit.js';
 import { createMenuRouter } from './menus/router.js';
@@ -38,6 +40,8 @@ export type AppOptions = {
   paystackSecretKey?: string;
   // Where Paystack sends the customer after paying (PAYSTACK_CALLBACK_URL).
   paystackCallbackUrl?: string;
+  // Free trial length, plan prices and the subscription return page.
+  billing?: BillingConfig;
 };
 
 // Builds the app without listening on a port or connecting to a database,
@@ -79,12 +83,20 @@ export function createApp(options: AppOptions): Express {
     res.json({ status: 'ok' });
   });
 
+  const billing = options.billing ?? DEFAULT_BILLING;
   app.use('/api/admin', createAdminRouter(options.auth, options.adminClerkUserIds ?? []));
+  // Before the sellers router: it answers /api/sellers/me/billing and /me/share and
+  // lets every other path through.
+  app.use(
+    '/api/sellers/me',
+    createBillingRouter(options.auth, { paystack: options.paystack ?? null, config: billing, rateLimits: options.rateLimits }),
+  );
   app.use(
     '/api/sellers',
     createSellerRouter(options.auth, {
       paystack: options.paystack ?? null,
       pricing: options.pricing ?? { freeOrders: DEFAULT_FREE_ORDERS, platformFeeBps: DEFAULT_PLATFORM_FEE_BPS },
+      billing,
     }),
   );
   app.use('/api/menus', createMenuRouter(options.auth));

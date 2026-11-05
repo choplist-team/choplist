@@ -31,6 +31,36 @@ export function sellerPaymentsReady(seller: { paymentsReady?: boolean | null; pa
   return seller.paymentsReady === true && Boolean(seller.paystackSubaccountCode);
 }
 
+// Verification starts after the free trial ends. Nothing here decides who gets
+// verified or what it unlocks: the status is only recorded (see billing/).
+export const VERIFICATION_STATUSES = ['not_started', 'pending', 'verified', 'rejected'] as const;
+export type VerificationStatus = (typeof VERIFICATION_STATUSES)[number];
+
+// The vendor's free trial and verification. Subscriptions live in their own
+// collection (models/subscription.ts) because each renewal is a record to keep.
+//
+// Optional on the schema: sellers from before billing existed have none (a schema
+// default only applies to NEW documents). billing/state.ts gives them a trial the
+// first time it is needed, so no code reads this directly.
+const billingSchema = new Schema(
+  {
+    trialStartedAt: { type: Date, required: true },
+    trialEndsAt: { type: Date, required: true },
+    verification: {
+      type: new Schema(
+        {
+          status: { type: String, enum: VERIFICATION_STATUSES, required: true, default: 'not_started' },
+          startedAt: Date,
+          completedAt: Date,
+        },
+        { _id: false },
+      ),
+      default: () => ({ status: 'not_started' }),
+    },
+  },
+  { _id: false },
+);
+
 // Lowercase words joined by single hyphens, e.g. "mama-titi-kitchen".
 export const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -101,6 +131,9 @@ const sellerSchema = new Schema(
     // True only while the seller has a working subaccount. The pay route refuses
     // otherwise, and manual bank transfer keeps working.
     paymentsReady: { type: Boolean, required: true, default: false },
+
+    // ---- Free trial and verification (see billing/) ----
+    billing: { type: billingSchema },
   },
   { timestamps: true },
 );

@@ -39,13 +39,16 @@ export type InitializeInput = {
   email: string;
   amountKobo: number;
   reference: string;
-  subaccountCode: string;
+  // The split. All three are given for an order payment (the seller is paid
+  // directly) and all three are left out for a vendor's subscription, which goes
+  // to ChopList's own account with nothing split off.
+  subaccountCode?: string;
   // ChopList's cut, in kobo. 0 is left out of the request: Paystack treats an
   // absent value as "use the subaccount's default", which we set to 0%, so both
   // mean the same thing.
-  transactionChargeKobo: number;
+  transactionChargeKobo?: number;
   // Who Paystack takes its own fee from: 'account' (ChopList) or 'subaccount' (the seller).
-  bearer: 'account' | 'subaccount';
+  bearer?: 'account' | 'subaccount';
   callbackUrl?: string;
   metadata: Record<string, string>;
 };
@@ -186,9 +189,9 @@ export function createPaystackClient(secretKey: string, fetchImpl: FetchLike = f
         amount: input.amountKobo,
         currency: 'NGN',
         reference: input.reference,
-        subaccount: input.subaccountCode,
-        ...(input.transactionChargeKobo > 0 ? { transaction_charge: input.transactionChargeKobo } : {}),
-        bearer: input.bearer,
+        ...(input.subaccountCode ? { subaccount: input.subaccountCode } : {}),
+        ...(input.subaccountCode && (input.transactionChargeKobo ?? 0) > 0 ? { transaction_charge: input.transactionChargeKobo } : {}),
+        ...(input.subaccountCode && input.bearer ? { bearer: input.bearer } : {}),
         ...(input.callbackUrl ? { callback_url: input.callbackUrl } : {}),
         metadata: input.metadata,
       });

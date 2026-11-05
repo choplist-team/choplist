@@ -12,8 +12,34 @@ function isOrigin(value: string): boolean {
 }
 
 // Also the fallback the app uses when it is built without a config (tests).
+//
+// ChopList now earns from vendor subscriptions, not from a cut of each order, so
+// the per-order platform fee is OFF (0 basis points). The tier code in
+// payments/fees.ts is kept but unused: setting PLATFORM_FEE_BPS above 0 turns it
+// back on. This does not touch the Paystack processing fee the customer or the
+// seller pays (feeMode / serviceFee): only ChopList's own cut goes to zero.
 export const DEFAULT_FREE_ORDERS = 50;
-export const DEFAULT_PLATFORM_FEE_BPS = 300;
+export const DEFAULT_PLATFORM_FEE_BPS = 0;
+
+// ---- Vendor billing (see billing/) ----
+// Every new vendor gets this many days free, counted from the moment the seller
+// profile is created.
+export const DEFAULT_TRIAL_DAYS = 7;
+// Whole naira per plan.
+export const DEFAULT_MONTHLY_NAIRA = 3000;
+// !! PLACEHOLDER, PENDING TEAM CONFIRMATION. The brief said 11,000, which costs
+// !! more than three months at 3,000 (9,000), so the real number is undecided.
+// !! Confirm it, then set SUBSCRIPTION_QUARTERLY_NAIRA on Render.
+export const DEFAULT_QUARTERLY_NAIRA = 8000;
+
+// A whole-number setting where a blank value (as left by .env.example) means "use the
+// default". Without this a blank would be read as 0 and refused at startup.
+function wholeNumberSetting(fallback: number, min: number, max: number) {
+  return z.preprocess(
+    (raw) => (typeof raw === 'string' && raw.trim() === '' ? undefined : raw),
+    z.coerce.number().int().min(min).max(max).default(fallback),
+  );
+}
 
 const EnvSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(5000),
@@ -90,6 +116,28 @@ const EnvSchema = z.object({
     .optional()
     .transform((raw) => (raw && raw.trim() !== '' ? raw.trim() : undefined))
     .pipe(z.url({ protocol: /^https?$/, error: 'PAYSTACK_CALLBACK_URL must be an http(s) URL' }).optional()),
+
+  // ---- Vendor billing: free trial and subscriptions (see billing/) ----
+  TRIAL_DAYS: wholeNumberSetting(DEFAULT_TRIAL_DAYS, 1, 90),
+  // Capped well above any sensible price so a slipped zero is refused at startup.
+  SUBSCRIPTION_MONTHLY_NAIRA: wholeNumberSetting(DEFAULT_MONTHLY_NAIRA, 100, 1_000_000),
+  SUBSCRIPTION_QUARTERLY_NAIRA: wholeNumberSetting(DEFAULT_QUARTERLY_NAIRA, 100, 3_000_000),
+  // The frontend page Paystack sends a vendor back to after paying a subscription,
+  // e.g. https://choplistafrica.com/seller/subscription/done. Separate from the
+  // customer's PAYSTACK_CALLBACK_URL because it is a different page.
+  SUBSCRIPTION_CALLBACK_URL: z
+    .string()
+    .optional()
+    .transform((raw) => (raw && raw.trim() !== '' ? raw.trim() : undefined))
+    .pipe(z.url({ protocol: /^https?$/, error: 'SUBSCRIPTION_CALLBACK_URL must be an http(s) URL' }).optional()),
+  // The start of a shop link, without the slug, e.g. https://choplistafrica.com/shop
+  // . GET /api/sellers/me/share returns base + "/" + slug. Unset = it returns the
+  // slug only and the frontend builds the link itself.
+  SHARE_URL_BASE: z
+    .string()
+    .optional()
+    .transform((raw) => (raw && raw.trim() !== '' ? raw.trim().replace(/\/+$/, '') : undefined))
+    .pipe(z.url({ protocol: /^https?$/, error: 'SHARE_URL_BASE must be an http(s) URL' }).optional()),
 
   // From the Clerk dashboard (API keys). The publishable key is the same value
   // the frontend uses as VITE_CLERK_PUBLISHABLE_KEY.

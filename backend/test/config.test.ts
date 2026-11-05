@@ -53,11 +53,61 @@ describe('parseEnv', () => {
     expect(() => parseEnv({ ...valid, ALLOWED_ORIGINS: 'https://ChopListAfrica.com' })).toThrow(/is not an origin/);
   });
 
+  describe('vendor billing settings', () => {
+    it('defaults to a 7 day trial, 3000 monthly and the 8000 quarterly placeholder, with no return page', () => {
+      const config = parseEnv(valid);
+      expect(config.TRIAL_DAYS).toBe(7);
+      expect(config.SUBSCRIPTION_MONTHLY_NAIRA).toBe(3000);
+      expect(config.SUBSCRIPTION_QUARTERLY_NAIRA).toBe(8000);
+      expect(config.SUBSCRIPTION_CALLBACK_URL).toBeUndefined();
+      expect(config.SHARE_URL_BASE).toBeUndefined();
+    });
+
+    it('reads overrides from the environment', () => {
+      const config = parseEnv({
+        ...valid,
+        TRIAL_DAYS: '14',
+        SUBSCRIPTION_MONTHLY_NAIRA: '3500',
+        SUBSCRIPTION_QUARTERLY_NAIRA: '9000',
+        SUBSCRIPTION_CALLBACK_URL: 'https://choplistafrica.com/seller/subscription/done',
+        SHARE_URL_BASE: 'https://choplistafrica.com/shop/',
+      });
+      expect(config).toMatchObject({ TRIAL_DAYS: 14, SUBSCRIPTION_MONTHLY_NAIRA: 3500, SUBSCRIPTION_QUARTERLY_NAIRA: 9000 });
+      expect(config.SUBSCRIPTION_CALLBACK_URL).toBe('https://choplistafrica.com/seller/subscription/done');
+      // The trailing slash is dropped so the link is base + "/" + slug.
+      expect(config.SHARE_URL_BASE).toBe('https://choplistafrica.com/shop');
+    });
+
+    it('treats blank numbers, as left by .env.example, as "use the default" instead of 0', () => {
+      const config = parseEnv({ ...valid, TRIAL_DAYS: '', SUBSCRIPTION_MONTHLY_NAIRA: '  ', SUBSCRIPTION_QUARTERLY_NAIRA: '' });
+      expect(config).toMatchObject({ TRIAL_DAYS: 7, SUBSCRIPTION_MONTHLY_NAIRA: 3000, SUBSCRIPTION_QUARTERLY_NAIRA: 8000 });
+    });
+
+    it('refuses a trial that is zero, negative, fractional, text or longer than 90 days', () => {
+      for (const bad of ['0', '-7', '3.5', 'week', '91']) {
+        expect(() => parseEnv({ ...valid, TRIAL_DAYS: bad })).toThrow(/TRIAL_DAYS/);
+      }
+    });
+
+    it('refuses a price that is a slipped digit, fractional or text', () => {
+      expect(() => parseEnv({ ...valid, SUBSCRIPTION_MONTHLY_NAIRA: '30' })).toThrow(/SUBSCRIPTION_MONTHLY_NAIRA/);
+      expect(() => parseEnv({ ...valid, SUBSCRIPTION_MONTHLY_NAIRA: '3000.5' })).toThrow(/SUBSCRIPTION_MONTHLY_NAIRA/);
+      expect(() => parseEnv({ ...valid, SUBSCRIPTION_QUARTERLY_NAIRA: 'cheap' })).toThrow(/SUBSCRIPTION_QUARTERLY_NAIRA/);
+      expect(() => parseEnv({ ...valid, SUBSCRIPTION_QUARTERLY_NAIRA: '80000000' })).toThrow(/SUBSCRIPTION_QUARTERLY_NAIRA/);
+    });
+
+    it('treats blank return/share settings as not set and refuses non-URLs', () => {
+      expect(parseEnv({ ...valid, SUBSCRIPTION_CALLBACK_URL: '', SHARE_URL_BASE: '  ' }).SUBSCRIPTION_CALLBACK_URL).toBeUndefined();
+      expect(() => parseEnv({ ...valid, SUBSCRIPTION_CALLBACK_URL: 'not a url' })).toThrow(/SUBSCRIPTION_CALLBACK_URL/);
+      expect(() => parseEnv({ ...valid, SHARE_URL_BASE: 'javascript:alert(1)' })).toThrow(/SHARE_URL_BASE/);
+    });
+  });
+
   describe('pricing and Paystack settings', () => {
-    it('defaults to 50 free orders and a 3% fee, with Paystack off', () => {
+    it('defaults to no ChopList fee per order (income is the vendor subscription), with Paystack off', () => {
       const config = parseEnv(valid);
       expect(config.FREE_ORDERS).toBe(50);
-      expect(config.PLATFORM_FEE_BPS).toBe(300);
+      expect(config.PLATFORM_FEE_BPS).toBe(0);
       expect(config.PAYSTACK_SECRET_KEY).toBeUndefined();
       expect(config.PAYSTACK_CALLBACK_URL).toBeUndefined();
     });
@@ -80,6 +130,10 @@ describe('parseEnv', () => {
       expect(() => parseEnv({ ...valid, PLATFORM_FEE_BPS: '2.5' })).toThrow(/PLATFORM_FEE_BPS/);
       expect(() => parseEnv({ ...valid, FREE_ORDERS: '-5' })).toThrow(/FREE_ORDERS/);
       expect(() => parseEnv({ ...valid, FREE_ORDERS: 'fifty' })).toThrow(/FREE_ORDERS/);
+    });
+
+    it('still lets the per-order fee be switched back on', () => {
+      expect(parseEnv({ ...valid, PLATFORM_FEE_BPS: '300' }).PLATFORM_FEE_BPS).toBe(300);
     });
 
     it('treats a blank PAYSTACK_SECRET_KEY (as in .env.example) as not set', () => {

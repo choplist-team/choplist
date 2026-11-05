@@ -32,9 +32,14 @@ You need Node 20.19 or newer, a MongoDB database, and a Clerk application.
    | `ALLOWED_ORIGINS` | Frontend origins, comma separated, no trailing slash (`http://localhost:5173`) |
    | `PORT` | Defaults to 5000 |
    | `FREE_ORDERS` | Optional (default 50). A seller's first N paid orders have no ChopList fee |
-   | `PLATFORM_FEE_BPS` | Optional (default 300 = 3%). ChopList's fee after the free orders, in basis points (max 2000) |
+   | `PLATFORM_FEE_BPS` | Optional (default 0 = off). ChopList no longer takes a cut of each order; it earns from vendor subscriptions. Above 0 switches the old tiers back on (a fee after the free orders, in basis points, max 2000) |
    | `PAYSTACK_SECRET_KEY` | Optional. Paystack secret key (`sk_test_...` for now). Blank = Paystack payments off, bank transfer only |
    | `PAYSTACK_CALLBACK_URL` | Optional. Frontend page Paystack returns the customer to after paying |
+   | `TRIAL_DAYS` | Optional (default 7). Free trial for a new vendor, from when their profile is created |
+   | `SUBSCRIPTION_MONTHLY_NAIRA` | Optional (default 3000) |
+   | `SUBSCRIPTION_QUARTERLY_NAIRA` | Optional (default 8000, a **placeholder pending team confirmation**; the server warns on every start until it is set) |
+   | `SUBSCRIPTION_CALLBACK_URL` | Optional. Frontend page Paystack returns a vendor to after paying a subscription |
+   | `SHARE_URL_BASE` | Optional. Start of a shop link without the slug, e.g. `https://choplistafrica.com/shop`. See `docs/api.md`, Vendor billing |
    | `ADMIN_CLERK_USER_IDS` | Optional. Clerk user ids (comma separated) allowed to use `/api/admin`. Empty = no admins |
    | `TRUST_PROXY_HOPS` | Proxies in front of the API, default 1. Leave alone locally. On Render see "Deploying on Render" |
    | `MONGO_URI_TEST` | Only for tests, see below |

@@ -174,6 +174,34 @@ describe('createPaystackClient', () => {
       expect(body.bearer).toBe('subaccount');
     });
 
+    it('sends no subaccount, split or bearer for a payment to ChopList itself (a vendor subscription)', async () => {
+      const fetchFn = mockFetch(ok());
+      await createPaystackClient(KEY, fetchFn).initializeTransaction({
+        email: 'vendor@kitchen.ng',
+        amountKobo: 300_000,
+        reference: 'CLS-abc123',
+        callbackUrl: 'https://choplistafrica.com/seller/subscription/done',
+        metadata: { type: 'subscription', plan: 'monthly' },
+      });
+      expect(JSON.parse(String(sent(fetchFn).init.body))).toEqual({
+        email: 'vendor@kitchen.ng',
+        amount: 300_000,
+        currency: 'NGN',
+        reference: 'CLS-abc123',
+        callback_url: 'https://choplistafrica.com/seller/subscription/done',
+        metadata: { type: 'subscription', plan: 'monthly' },
+      });
+    });
+
+    it('never sends a split or bearer without a subaccount, even if one is given by mistake', async () => {
+      const fetchFn = mockFetch(ok());
+      await createPaystackClient(KEY, fetchFn).initializeTransaction({
+        email: 'vendor@kitchen.ng', amountKobo: 300_000, reference: 'CLS-abc123', transactionChargeKobo: 5000, bearer: 'subaccount', metadata: {},
+      });
+      const body = JSON.parse(String(sent(fetchFn).init.body));
+      for (const field of ['subaccount', 'transaction_charge', 'bearer']) expect(body).not.toHaveProperty(field);
+    });
+
     it.each([
       ['http://checkout.paystack.com/abc'],
       ['https://evil.example.com/checkout.paystack.com'],
