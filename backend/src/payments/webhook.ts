@@ -1,6 +1,8 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { RequestHandler } from 'express';
 import { mongo } from 'mongoose';
+import { SUBSCRIPTION_REFERENCE_PATTERN } from '../billing/subscribe.js';
+import { processSubscriptionCharge } from '../billing/webhook.js';
 import { AppError } from '../errors.js';
 import { logEvent } from '../events/log.js';
 import { OrderModel } from '../models/order.js';
@@ -184,13 +186,21 @@ export function createWebhookHandler(options: { secretKey: string | null; paysta
     }
     const body = typeof event === 'object' && event !== null ? (event as { event?: unknown; data?: { reference?: unknown } }) : {};
     const reference = body.data?.reference;
-    if (body.event !== 'charge.success' || typeof reference !== 'string' || !REFERENCE_PATTERN.test(reference)) {
+    // Our two kinds of payment tell themselves apart by the reference's prefix: a
+    // customer paying for an order ("CLP-") and a vendor paying for a plan ("CLS-").
+    // The prefix is ours, chosen when the payment was started; the metadata we also
+    // send is not relied on, because the reply Paystack gives when we verify does not
+    // carry it.
+    const isSubscription = typeof reference === 'string' && SUBSCRIPTION_REFERENCE_PATTERN.test(reference);
+    const isOrder = typeof reference === 'string' && REFERENCE_PATTERN.test(reference);
+    if (body.event !== 'charge.success' || typeof reference !== 'string' || !(isOrder || isSubscription)) {
       res.json({ received: true });
       return;
     }
 
     try {
-      await processChargeSuccess(reference, paystack);
+      if (isSubscription) await processSubscriptionCharge(reference, paystack);
+      else await processChargeSuccess(reference, paystack);
     } catch (err) {
       if (!(err instanceof PaystackError)) throw err; // a bug or a database failure: 500, Paystack resends
       // We could not ask Paystack. Nothing was changed, so ask for a resend.

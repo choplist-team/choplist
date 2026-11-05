@@ -3,6 +3,8 @@ import { mongo } from 'mongoose';
 import { z } from 'zod';
 import { assertSellerNotBlocked, authenticate, currentSellerId, currentUserId, requireSeller, requireUser } from '../auth/middleware.js';
 import type { AuthProvider } from '../auth/provider.js';
+import { DEFAULT_BILLING, type BillingConfig } from '../billing/plans.js';
+import { startTrial } from '../billing/state.js';
 import { DEFAULT_FREE_ORDERS, DEFAULT_PLATFORM_FEE_BPS } from '../config.js';
 import { AppError } from '../errors.js';
 import { FEE_MODES, SLUG_PATTERN, SellerModel, sellerFeeMode, sellerPaidOrderCount, sellerPaymentsReady, type SellerDoc } from '../models/seller.js';
@@ -91,14 +93,16 @@ function duplicateKeyField(err: unknown): string | null {
   return null;
 }
 
-async function createProfile(clerkUserId: string, input: ProfileInput): Promise<SellerDoc> {
+async function createProfile(clerkUserId: string, input: ProfileInput, billing: BillingConfig): Promise<SellerDoc> {
   // A slug the seller chose is tried once; a generated one gets variants.
   const slugs = input.slug ? [input.slug] : slugCandidates(input.businessName, SLUG_ATTEMPTS);
 
   for (const slug of slugs) {
     try {
       const { email, ...rest } = input;
-      return await SellerModel.create({ ...rest, ...(email ? { email } : {}), slug, clerkUserId });
+      // The free trial starts now, when the profile is created (not when the
+      // person signed up with Clerk), on the server clock.
+      return await SellerModel.create({ ...rest, ...(email ? { email } : {}), slug, clerkUserId, billing: startTrial(billing, new Date()) });
     } catch (err) {
       // The unique index, not a "does it exist?" read, decides who gets a
       // slug, so two sellers signing up at once can't both get it.
@@ -140,6 +144,8 @@ export type SellerRouterOptions = {
   // null = no PAYSTACK_SECRET_KEY: payments are off, everything else works.
   paystack: PaystackClient | null;
   pricing: { freeOrders: number; platformFeeBps: number };
+  // Only the trial length is used here (a new seller's trial starts on creation).
+  billing?: BillingConfig;
 };
 
 // The bank list barely changes; fetching it on every onboarding would be slow
@@ -153,6 +159,7 @@ export function createSellerRouter(
   const router = Router();
   router.use(authenticate(auth));
   const { paystack, pricing } = options;
+  const billing = options.billing ?? DEFAULT_BILLING;
 
   // Sets up (or re-checks) the seller's payout account when it needs it, then
   // builds the response from the fresh seller.
@@ -251,7 +258,7 @@ export function createSellerRouter(
     try {
       // Await before touching res: setting 201 first would leak into the
       // fallback response below if the create fails.
-      created = await createProfile(clerkUserId, input);
+      created = await createProfile(clerkUserId, input, billing);
     } catch (err) {
       // Two first-time PUTs from the same user at once: the other one created
       // the profile between our findOne and create. Update that one instead.

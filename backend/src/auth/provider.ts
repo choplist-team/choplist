@@ -10,4 +10,10 @@ export type AuthProvider = {
 
   // The signed-in user's id, or null if there is no valid token.
   getUserId(req: Request): string | null;
+
+  // The email on the user's login account, or null if there is none or it cannot
+  // be looked up. Used only to give Paystack a payer address for a vendor's
+  // subscription; it never throws, so a login-provider outage cannot break a
+  // payment. Optional so a test fake without it still satisfies the type.
+  getEmail?(userId: string): Promise<string | null>;
 };

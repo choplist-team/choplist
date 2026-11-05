@@ -29,6 +29,13 @@ const app = createApp({
   paystack: config.PAYSTACK_SECRET_KEY ? createPaystackClient(config.PAYSTACK_SECRET_KEY) : null,
   pricing: { freeOrders: config.FREE_ORDERS, platformFeeBps: config.PLATFORM_FEE_BPS },
   paystackCallbackUrl: config.PAYSTACK_CALLBACK_URL,
+  billing: {
+    trialDays: config.TRIAL_DAYS,
+    monthlyNaira: config.SUBSCRIPTION_MONTHLY_NAIRA,
+    quarterlyNaira: config.SUBSCRIPTION_QUARTERLY_NAIRA,
+    callbackUrl: config.SUBSCRIPTION_CALLBACK_URL,
+    shareUrlBase: config.SHARE_URL_BASE,
+  },
   paystackSecretKey: config.PAYSTACK_SECRET_KEY,
   auth: createClerkAuth({
     secretKey: config.CLERK_SECRET_KEY,
@@ -36,6 +43,12 @@ const app = createApp({
     authorizedParties: config.ALLOWED_ORIGINS,
   }),
 });
+
+// The quarterly price is a placeholder until the team confirms it. Say so in the
+// log on every start until someone sets it deliberately.
+if (!process.env.SUBSCRIPTION_QUARTERLY_NAIRA) {
+  console.warn(`SUBSCRIPTION_QUARTERLY_NAIRA is not set: using the placeholder ${config.SUBSCRIPTION_QUARTERLY_NAIRA} naira (pending team confirmation).`);
+}
 
 const server = app.listen(config.PORT, () => {
   // The count only (no values): in the Render log it shows at a glance whether

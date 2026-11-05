@@ -21,8 +21,12 @@ until the service restarts). All are described in `.env.example`.
 | -------- | ----- |
 | `PAYSTACK_SECRET_KEY` | The **test** secret key from Paystack dashboard > Settings > API Keys & Webhooks. Leave it empty to keep online payments off (bank transfer keeps working) |
 | `PAYSTACK_CALLBACK_URL` | The frontend page Paystack sends the customer back to after paying, e.g. `https://choplistafrica.com/pay/done`. **Agree the page with the frontend team first** |
-| `FREE_ORDERS` | `50` (a seller's first 50 online-paid orders carry no ChopList fee) |
-| `PLATFORM_FEE_BPS` | `300` (3%, in basis points) |
+| `PLATFORM_FEE_BPS` | `0` (ChopList takes no cut of each order; it earns from subscriptions). The default is 0, so leaving it unset is the same. Setting it above 0 switches the old tiers back on (`FREE_ORDERS` free orders, then this many basis points) |
+| `SUBSCRIPTION_CALLBACK_URL` | The frontend page Paystack sends a vendor back to after paying a subscription. **Agree the page with the frontend team first**; it is not the customer's page |
+| `SHARE_URL_BASE` | Start of a shop link without the slug, e.g. `https://choplistafrica.com/shop` (optional) |
+| `TRIAL_DAYS` | `7` (optional) |
+| `SUBSCRIPTION_MONTHLY_NAIRA` | `3000` (optional) |
+| `SUBSCRIPTION_QUARTERLY_NAIRA` | **Set this once the team confirms the price.** Until then the server uses the placeholder 8000 and says so in its log on every start |
 
 The startup log does not print any of these. If `PAYSTACK_SECRET_KEY` is set but does
 not start with `sk_`, the server refuses to start and says so (without printing the
@@ -87,6 +91,25 @@ that differs. Use a throwaway seller and order.
 7. **The 50th and 51st.** Set a test seller's `paidOrderCount` to 49 in the database,
    pay, and check the next quote carries the 3% fee.
 
+### Subscriptions (vendor billing)
+
+Do this after the order run above, with a throwaway seller whose trial you have ended (set
+`billing.trialEndsAt` to a past date in the database) so the share button is refused.
+
+1. `GET /api/sellers/me/share` answers `403 SHARING_NOT_ALLOWED`.
+2. `POST /api/sellers/me/billing/subscribe` with `{ "plan": "monthly" }`, open
+   `authorizationUrl` and pay with a test card.
+3. Check in order: Paystack's dashboard shows the webhook got `200`; the transaction is in
+   **ChopList's own balance** (not split to any seller); `GET /api/sellers/me/billing` says
+   `state: "active"` with `expiresAt` one calendar month after `startsAt`; and
+   `GET /api/sellers/me/share` works again.
+4. **Replay** the event from Paystack's dashboard: nothing changes.
+5. Subscribe again **before** it expires: the new `startsAt` must equal the first one's
+   `expiresAt`.
+6. **Nobody has confirmed yet** that Paystack accepts a payment with no subaccount in test
+   mode, or what it reports when you verify one. If step 2 fails, send the `payment_*`
+   event, not the key.
+
 ## 4. When something is wrong
 
 Problems are written to the event log, with order references and amounts but never
@@ -104,6 +127,13 @@ customer, bank or key details. Read them in the admin console (`GET /api/admin/e
 | | `NOT_CONFIRMED` | Paystack did not report the payment as successful. Usually harmless |
 | | `UNKNOWN_REFERENCE` | A confirmed payment ChopList has no record of. Check the Paystack dashboard |
 | | `VERIFY_FAILED` | ChopList could not ask Paystack; Paystack will resend. Repeated failures mean the key or Paystack is down |
+
+Subscription problems are `subscription_webhook_issue` (a confirmation that needs a look)
+and `subscription_start_failed` (a vendor could not start paying). Their codes are the
+same as above (`AMOUNT_MISMATCH`, `NOT_CONFIRMED`, `UNKNOWN_REFERENCE`,
+`PAYSTACK_UNAVAILABLE`, `PAYSTACK_REJECTED`); `VERIFY_FAILED` is still logged as
+`payment_webhook_issue`. A subscription marked `needs_review` is the **vendor's** money
+sitting with Paystack and is not counted on the admin overview: find it in the event log.
 
 Every `needs_review` payment (counted on the admin overview) is the customer's money
 sitting with Paystack. **Nothing refunds it automatically.** Refund it in Paystack's

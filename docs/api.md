@@ -60,11 +60,13 @@ Every error, on every route, has this shape:
 | 403 | `FORBIDDEN` | Signed in, but not an administrator, on an `/api/admin` route |
 | 403 | `ACCOUNT_SUSPENDED` | The seller's account was suspended or deactivated by an admin; every seller route refuses until it is reinstated. Show the message and a support contact |
 | 403 | `PROFILE_REQUIRED` | Signed in, but no seller profile yet: show onboarding, then `PUT /api/sellers/me` |
+| 403 | `SHARING_NOT_ALLOWED` | `GET /api/sellers/me/share` only: the vendor's free trial has ended and they have no active subscription. Show the subscribe screen (see [Vendor billing](#vendor-billing-free-trial-and-subscriptions)) |
 | 404 | `NOT_FOUND` | No route matches the method and path |
 | 404 | `MENU_NOT_FOUND` | No such menu for this seller (also for another seller's menu, and malformed ids) |
 | 404 | `SELLER_NOT_FOUND` | No seller has this public link |
 | 404 | `ORDER_NOT_FOUND` | No order matches that reference and phone digits (same error for both). On `/pay` and `/payment-status`: no order matches that reference and `X-Order-Key` (a wrong key, a missing key and an unknown reference all look the same) |
 | 404 | `REPORT_NOT_FOUND` | No "my order is missing" report has that id (admin) |
+| 404 | `SUBSCRIPTION_NOT_FOUND` | No subscription of this vendor has that reference (another vendor's reference looks the same) |
 | 409 | `SLUG_TAKEN` | The chosen link is used by another seller |
 | 409 | `MENU_NOT_DRAFT` | Editing a menu that is open or closed |
 | 409 | `MENU_CLOSED` | Opening a closed menu (create a new one instead) |
@@ -269,7 +271,9 @@ onboarding without a bank code.
 - `freeOrdersRemaining` is how many are left before ChopList's fee starts.
   `tier` is what the **next** payment will be charged under: `"free"` or `"standard"`.
 - `platformFeeBps` is ChopList's fee in basis points (`300` = 3%), charged on the
-  order amount once the free orders are used.
+  order amount once the free orders are used. **It is `0` by default now** (ChopList
+  earns from subscriptions), so `freeOrders`, `freeOrdersRemaining` and `tier` mean
+  nothing to a vendor: do not show "12 of your first 50 orders free".
 
 **`PUT /api/sellers/me/fee-mode`**: who pays the card fees from now on.
 
@@ -300,6 +304,248 @@ again. A failed retry never switches off payments that already work.
 | `PAYSTACK_UNAVAILABLE` | Paystack (or ChopList's connection to it) failed; not the seller's fault | "Try again in a few minutes", with a retry button |
 | `NOT_CONFIGURED` | ChopList has online payments switched off | Nothing to do; bank transfer only |
 | `NOT_SET_UP` | Not set up yet and nothing has failed (for example an old profile) | Offer to retry |
+
+## Vendor billing: free trial and subscriptions
+
+ChopList earns from vendor subscriptions, not from a cut of each order. Every vendor
+gets a free trial; once it has ended, the vendor needs an active subscription to share
+their shop link **through the app**.
+
+- **Free trial: 7 days** (`TRIAL_DAYS`), counted from the moment the seller profile is
+  created (the first `PUT /api/sellers/me`), not from signing up with Clerk.
+- **Verification** begins after the trial ends. ChopList records its status
+  (`not_started`, `pending`, `verified`, `rejected`) and **nothing depends on it yet**:
+  it does not block selling, sharing or paying. Nothing in the API changes it yet either.
+  Who verifies vendors, how, and what "verified" unlocks are open product decisions.
+- **Plans:** monthly **₦3,000**, quarterly **₦8,000**. The quarterly price is a
+  **placeholder, pending team confirmation** (the brief said ₦11,000, which costs more
+  than three months at ₦3,000). Both prices are settings, in whole naira.
+- **Money.** Subscription payments go to **ChopList's own Paystack account**: no
+  subaccount, no split. They are separate from customers paying vendors for orders.
+- **No per-order platform fee** any more (see [What a payment costs](#what-a-payment-costs)).
+
+### The three states
+
+The state is worked out from dates and the **server clock** every time it is asked.
+Nothing is stored or scheduled, so it cannot go stale.
+
+| `state` | Meaning | `canShareLink` |
+| ------- | ------- | -------------- |
+| `active` | A confirmed subscription covers this moment (checked first, so a vendor who pays during the trial is `active`) | `true` |
+| `trial` | Nothing covers it, but the free trial has not ended | `true` |
+| `expired` | The trial has ended and no subscription covers this moment | `false` |
+
+The boundaries are exact: the trial is over **at** `trialEndsAt` (not after it), and a
+subscription covers `startsAt` up to but **not including** `expiresAt`.
+
+### GET /api/sellers/me/billing
+
+Needs `Authorization: Bearer <token>` and a seller profile. The one answer to "may this
+vendor share their link, and where do they stand?". Every other endpoint uses the same
+function.
+
+```json
+{
+  "state": "active",
+  "canShareLink": true,
+  "trialStartedAt": "2026-11-05T09:00:00.000Z",
+  "trialEndsAt": "2026-11-12T09:00:00.000Z",
+  "subscription": {
+    "id": "6650f0c2a1b2c3d4e5f60718",
+    "plan": "monthly",
+    "startsAt": "2026-11-08T10:30:00.000Z",
+    "expiresAt": "2026-12-08T10:30:00.000Z"
+  },
+  "accessEndsAt": "2027-03-08T10:30:00.000Z",
+  "verification": { "status": "not_started", "startedAt": null, "completedAt": null },
+  "verificationDue": false,
+  "plans": [
+    { "id": "monthly", "months": 1, "priceNaira": 3000 },
+    { "id": "quarterly", "months": 3, "priceNaira": 8000 }
+  ]
+}
+```
+
+- `subscription` is the one covering this moment, or `null`.
+- `accessEndsAt` is when paid cover really ends, counting subscriptions already bought
+  for after the current one. `null` when nothing covers this moment.
+- `verificationDue` is `true` once the trial has ended and verification has not started.
+  It is a signal only; nothing is blocked by it.
+- `plans` is the price list to show. Use it instead of hard-coding prices.
+- Dates are ISO timestamps in UTC.
+
+Errors: `401 UNAUTHENTICATED`, `403 PROFILE_REQUIRED`, `403 ACCOUNT_SUSPENDED`.
+
+### POST /api/sellers/me/billing/subscribe
+
+Starts paying for a plan. Body: `{ "plan": "monthly" }` or `{ "plan": "quarterly" }`.
+
+Response `200`:
+
+```json
+{
+  "authorizationUrl": "https://checkout.paystack.com/xxxxxxxx",
+  "reference": "CLS-4f9a1c0e7b2d3a5c6e8f9012",
+  "plan": "monthly",
+  "amountNaira": 3000
+}
+```
+
+Redirect the vendor to `authorizationUrl`. **Nothing is activated by this call, and
+nothing is activated by the vendor coming back from Paystack.** The subscription becomes
+active only when Paystack confirms the payment to the server (the signed webhook, then
+the server asks Paystack and checks the amount and reference). After checkout Paystack
+sends the vendor to `SUBSCRIPTION_CALLBACK_URL`; that page polls the status route below.
+
+Errors: `400 VALIDATION_ERROR` (unknown plan), `401`, `403 PROFILE_REQUIRED`,
+`403 ACCOUNT_SUSPENDED`, `429 RATE_LIMITED` (shares the limit on starting payments),
+`503 PAYMENTS_UNAVAILABLE` (no Paystack key, or Paystack could not be reached; safe to retry).
+
+### GET /api/sellers/me/billing/subscriptions
+
+The vendor's own attempts and renewals, newest first (up to 100).
+
+```json
+{
+  "subscriptions": [
+    {
+      "id": "6650f0c2a1b2c3d4e5f60718",
+      "plan": "monthly",
+      "amountNaira": 3000,
+      "status": "active",
+      "reference": "CLS-4f9a1c0e7b2d3a5c6e8f9012",
+      "paidAt": "2026-11-08T10:30:00.000Z",
+      "startsAt": "2026-11-08T10:30:00.000Z",
+      "expiresAt": "2026-12-08T10:30:00.000Z",
+      "renewalOf": null,
+      "createdAt": "2026-11-08T10:28:10.000Z"
+    }
+  ]
+}
+```
+
+`status` is `pending` (started, not confirmed), `active` (confirmed), `failed` (Paystack
+reported the charge failed; a later success on the same payment still activates it) or
+`needs_review` (money arrived but could not be activated, for example the amount was
+wrong: ChopList must look at it). There is no `expired` status: a subscription has
+expired when `expiresAt` is in the past. `renewalOf` is the confirmed subscription this
+one follows.
+
+### GET /api/sellers/me/billing/subscriptions/:reference
+
+One attempt, by the `reference` returned by `subscribe`. For the page the vendor lands on
+after Paystack: **poll it every 3 seconds for 30 seconds, then every 10 seconds, and stop
+after about 5 minutes**, until `status` is `active`. Sent with `Cache-Control: no-store`.
+Same body as one item above. `404 SUBSCRIPTION_NOT_FOUND` for an unknown reference and for
+another vendor's reference (they look the same). If it stays `pending` after the poll
+stops, tell the vendor their payment is being confirmed and to check back; do not charge
+them again.
+
+### GET /api/sellers/me/share
+
+The vendor's shop link, for the share button. Refused once the trial has ended with no
+active subscription.
+
+```json
+{ "slug": "mama-ts-kitchen", "url": "https://choplistafrica.com/shop/mama-ts-kitchen" }
+```
+
+`url` is built from `SHARE_URL_BASE` plus the slug; it is `null` when that setting is not
+configured, and then the frontend builds the link from `slug` as it does today. Errors:
+`401`, `403 PROFILE_REQUIRED`, `403 ACCOUNT_SUSPENDED`, and
+**`403 SHARING_NOT_ALLOWED`** when `canShareLink` is `false` (the message is fit to show).
+
+### What the share restriction does and does not protect
+
+**This restriction is soft. It controls what the app hands out; it cannot make a link
+that was already shared stop working.** That is a deliberate product decision for the team
+to confirm.
+
+It does:
+- make `GET /api/sellers/me/share` refuse an expired vendor, and
+- return `canShareLink: false` from `GET /api/sellers/me/billing` so the frontend can
+  grey out the share area.
+
+It does **not**:
+- stop customers using a link the vendor already shared. `GET /api/public/menu/:slug` and
+  `POST /api/public/orders` are unchanged for an expired vendor: the shop still shows its
+  menu and takes orders;
+- hide the slug. The vendor's own profile (`GET /api/sellers/me`) still returns it, and a
+  link is just the site address plus `/shop/<slug>`, so a determined vendor can type it;
+- block opening a menu (`POST /api/menus/:id/open` works as before);
+- protect anything unless the frontend uses `GET /api/sellers/me/share` for the share
+  button. Today the dashboard builds the link itself from the slug, so **until the
+  frontend calls the new endpoint the restriction does nothing.**
+
+Making it hard (the shop stops working for customers when a vendor expires) is a small
+backend change but changes what customers see; it needs a product decision first.
+
+### How a subscription becomes active
+
+`POST /api/webhooks/paystack` receives the `charge.success` event, checks the signature,
+tells a subscription from an order payment by the reference prefix (`CLS-` is a
+subscription, `CLP-` is an order), then asks Paystack for the truth and checks that the
+payment **succeeded, has the same reference, is in `NGN`, and is exactly the plan's price**
+(frozen on the subscription when the vendor pressed Subscribe). Only then is it activated,
+once: a repeated or simultaneous delivery changes nothing.
+
+Dates come from the **server clock**, at the moment of confirmation:
+
+- `startsAt` is the confirmation time, **unless the vendor is still covered**, in which
+  case it is the current `expiresAt`. Paying early therefore adds to the cover; nothing is
+  lost and nothing overlaps.
+- `expiresAt` is `startsAt` plus 1 calendar month (monthly) or 3 (quarterly), **in UTC**.
+  When the target month is shorter the date is pulled back to its last day: a monthly
+  subscription confirmed on 31 January expires on 28 February (29 in a leap year); a
+  quarterly one confirmed on 30 November expires on 28 February.
+- Paying **after** cover lapsed starts from the confirmation; the gap is not given back.
+- Paying **during the trial** starts at once; the remaining trial days are not added on top.
+  (Product decision to confirm.)
+- Each purchase is its own record, so the list above is the renewal history.
+
+### What if it goes wrong
+
+| Situation | Result |
+| --------- | ------ |
+| Wrong signature | `401 INVALID_SIGNATURE`, nothing changes |
+| Same event again | `200`, nothing changes (it does not even ask Paystack again) |
+| Paystack says the charge failed | `200`, subscription `failed`; not active. A later success on the same payment still activates it |
+| Paystack has not confirmed it (abandoned, ongoing) | `200`, stays `pending` |
+| Wrong amount or currency | `200`, set aside as `needs_review`, **not active**; event `AMOUNT_MISMATCH`. The vendor's money is with Paystack: a person must refund it or decide |
+| A reference ChopList never issued | `200`, logged `UNKNOWN_REFERENCE` |
+| Paystack cannot be reached to verify | `503`, nothing changes, Paystack resends |
+
+These show as `subscription_webhook_issue` events on `GET /api/admin/events`, with the
+reference and amounts, never vendor contact or bank details. There is no automated refund.
+
+### Which email Paystack is given
+
+Paystack needs an email on every payment. In this order: the email on the vendor's
+profile, then the email on their Clerk login account, then (last resort)
+`<sellerId>@sellers.choplistafrica.com`, which is not a real mailbox, so Paystack's
+receipt goes nowhere.
+
+### Settings
+
+| Variable | Default | Meaning |
+| -------- | ------- | ------- |
+| `TRIAL_DAYS` | `7` | Length of the free trial |
+| `SUBSCRIPTION_MONTHLY_NAIRA` | `3000` | Monthly price |
+| `SUBSCRIPTION_QUARTERLY_NAIRA` | `8000` | Quarterly price. **Placeholder, pending team confirmation.** The server says so in its log on every start until the variable is set |
+| `SUBSCRIPTION_CALLBACK_URL` | none | The frontend page Paystack sends a vendor back to after paying (agree the route with the frontend team) |
+| `SHARE_URL_BASE` | none | Start of a shop link without the slug, e.g. `https://choplistafrica.com/shop` |
+| `PLATFORM_FEE_BPS` | `0` | Per-order fee. `0` = off |
+
+### Existing sellers
+
+Sellers created before billing have no trial. The first time their state is needed they
+get a trial starting at that moment (once, even if several requests arrive together), so
+nobody's trial is already over when billing goes live. To give all of them the **same
+start date** (the deploy date) in one go, run `npm run backfill:billing` in `backend/`.
+It is a **dry run** unless given `--apply`, prints counts only, and never touches a seller
+who already has a trial, so it is safe to run twice. `--start <ISO date>` chooses the
+start. `--check-clerk` also counts how many sellers would be paying Paystack with the
+placeholder address (no email on their profile or their login account).
 
 ## Suspended and deactivated sellers
 
@@ -813,7 +1059,9 @@ Response `200`:
 ### GET /api/admin/events
 
 The troubleshooting log, newest first. Optional `?type=` (`order_failed`,
-`server_error`, `notification_failed`, `missing_order_report`), `?level=`
+`server_error`, `notification_failed`, `missing_order_report`, `payment_setup_failed`,
+`payment_start_failed`, `payment_webhook_issue`, `subscription_start_failed`,
+`subscription_webhook_issue`), `?level=`
 (`info`, `warn`, `error`), `?sellerId=`, `?from=` and `?to=` (calendar days in Lagos
 time, both included), `?page=`, `?limit=` (default 20, at most 100).
 
@@ -1737,6 +1985,10 @@ webhook URL in the Paystack dashboard (see [paystack-setup.md](paystack-setup.md
   against the exact bytes received, before reading anything else. A missing or wrong
   signature is `401 INVALID_SIGNATURE` and nothing is changed. This route reads the
   body raw (limit 100 KB); every other route reads JSON normally.
+- **Two kinds of payment arrive here.** A reference starting `CLP-` is a customer paying
+  for an order (the rest of this section); one starting `CLS-` is a vendor paying for a
+  subscription (see [Vendor billing](#vendor-billing-free-trial-and-subscriptions)). The
+  prefix is ChopList's own, set when the payment was started.
 - **Only `charge.success` does anything.** Any other event, a body that is not JSON, or
   a reference that is not ChopList's, is acknowledged with `200 {"received": true}` and
   ignored (an error status would only make Paystack resend the same thing).
@@ -1765,6 +2017,9 @@ webhook URL in the Paystack dashboard (see [paystack-setup.md](paystack-setup.md
 | Server bug or database failure | `500` | Nothing is lost; Paystack resends |
 | No Paystack key on the server | `503` | Nothing is accepted |
 
+A subscription payment follows the same rules with its own outcomes, listed under
+[Vendor billing](#vendor-billing-free-trial-and-subscriptions).
+
 Every row marked `needs_review` means **the customer's money is with Paystack and a
 person must refund it (or reinstate the order)**. There is no automated refund. These
 show in `paymentsNeedingReview` on the admin overview and as `payment_webhook_issue`
@@ -1780,6 +2035,16 @@ is settled to the seller's bank by Paystack. There is no wallet, no balance and 
 payout code in ChopList. Bank transfer keeps working for every order.
 
 ### What a payment costs
+
+> **ChopList no longer takes a cut of each order.** ChopList earns from vendor
+> subscriptions (see [Vendor billing](#vendor-billing-free-trial-and-subscriptions)).
+> `PLATFORM_FEE_BPS` now defaults to **0**, so the platform fee is zero and the free-order
+> tiers below change nothing. The tier code is kept, unused, and switches back on if
+> `PLATFORM_FEE_BPS` is set above 0. **Paystack's processing fee is unchanged**: the
+> `customer` / `seller` fee mode and the service fee work exactly as described, so a
+> ₦7,500 order still costs the customer ₦7,716 in `customer` mode and the seller still
+> receives ₦7,287.50 in `seller` mode. The rest of this section, and the worked examples,
+> describe the pricing **with the platform fee switched on**.
 
 - **Free orders.** A seller's first **50** orders paid through Paystack carry no
   ChopList fee (setting `FREE_ORDERS`). Orders paid by bank transfer do not count.
@@ -1881,6 +2146,25 @@ transfer keeps working unchanged**: until the frontend ships these, nothing brea
    `ORDER_CANCELLED` from `/pay` by falling back to the transfer instructions or the
    right message.
 
+**Vendor billing (trial, subscription, share button)**
+
+11. A **billing screen** from `GET /api/sellers/me/billing`: the trial countdown
+    (`trialEndsAt`), or "active until `accessEndsAt`", or "expired", with the plans and
+    prices from `plans` (do not hard-code prices; the quarterly one may change).
+12. **Subscribe**: `POST /api/sellers/me/billing/subscribe` with the chosen plan, then
+    redirect to `authorizationUrl`. Add a **return page** at `SUBSCRIPTION_CALLBACK_URL`
+    (agree the route with the backend; a different page from the customer's) that
+    polls `GET /api/sellers/me/billing/subscriptions/:reference` until `status` is
+    `active`. Save the `reference` before redirecting. Reaching the page proves nothing.
+13. **The share button** must call `GET /api/sellers/me/share` and use the `url` (or
+    build the link from `slug` when `url` is `null`), instead of building it from the
+    slug on its own. Grey the area out when `canShareLink` is `false` and show the
+    subscribe prompt; handle `403 SHARING_NOT_ALLOWED`. **Without this the restriction
+    does nothing.**
+14. Show a gentle notice when `verificationDue` is `true`. Nothing is blocked by it.
+15. Stop showing the free-orders counter (`freeOrdersRemaining`): the per-order fee is
+    off, so it means nothing now.
+
 **Admin**
 
 10. Show the `payments` and `funnel` blocks of `GET /api/admin/overview` with their
@@ -1933,6 +2217,27 @@ Not built, on purpose. Be upfront about these when presenting.
 - **Admin order detail does not yet show Paystack payments** for one order; use the event
   log and the Paystack dashboard.
 - **"Profile complete" in the funnel equals "registered"** today (see the admin overview).
+- **With the per-order fee off, some admin figures read zero or lose meaning:** `revenue`,
+  `payingSellers` and the funnel's paying stage are built from the per-order fee. They do
+  not include subscription income, and the admin overview has no subscription figures yet.
+- **The share restriction is soft** (see Vendor billing): a shared link keeps working, and
+  it protects nothing until the frontend uses `GET /api/sellers/me/share`. A product
+  decision for the team to confirm.
+- **The quarterly price is a placeholder** (₦8,000, pending team confirmation).
+- **Verification is recorded, not run.** Nothing sets it, and nothing depends on it.
+- **No admin view of subscriptions,** and no way to grant or extend one by hand. A
+  `needs_review` subscription is found through the event log and the Paystack dashboard.
+- **No refunds for subscriptions** (manual in Paystack), and cancelling a subscription is
+  not built: it simply runs to its expiry and is not renewed.
+- **Paying during the trial** does not add the remaining trial days.
+- **Abandoned subscription attempts stay `pending`** forever. They do nothing, but they
+  accumulate in the vendor's history.
+- **Calendar-month expiry** is computed in UTC, so a vendor in Lagos (UTC+1) sees the
+  change of day an hour earlier than the date in the data.
+- **Subscription payers without any email** use a placeholder address, so Paystack's
+  receipts for them go nowhere. `npm run backfill:billing -- --check-clerk` counts them.
+- **Switching a vendor off (suspending) does not cancel their subscription;** the cover
+  just carries on, unused.
 
 ## Typical flows
 
@@ -1978,6 +2283,19 @@ Not built, on purpose. Be upfront about these when presenting.
    `payment-status` until `state` is `paid` (or one of the other end states).
 6. The seller sees the order as `paid` with `paymentMethod: "paystack"` and carries on
    as usual (out for delivery, delivery code, delivered).
+
+### A vendor subscribes
+
+1. `GET /api/sellers/me/billing`: `state` is `trial` or `expired`, with `plans`.
+2. The vendor picks a plan. `POST /api/sellers/me/billing/subscribe`: save the returned
+   `reference`, then redirect to `authorizationUrl`.
+3. The vendor pays on Paystack. Paystack tells ChopList's server
+   (`POST /api/webhooks/paystack`, reference starts `CLS-`); the server checks the
+   signature, asks Paystack to confirm the amount, and activates the subscription.
+4. Paystack sends the vendor to the return page, which polls
+   `GET /api/sellers/me/billing/subscriptions/:reference` until `status` is `active`.
+5. `GET /api/sellers/me/billing` now says `state: "active"`, and
+   `GET /api/sellers/me/share` returns the link again.
 
 ### The seller runs the week
 

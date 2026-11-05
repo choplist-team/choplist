@@ -334,6 +334,31 @@ Things the screens must respect:
 - The seller finds an order by the reference in the bank alert. The list has no
   search, so filter it in the browser.
 
+### Trial, subscription and the share button
+
+ChopList earns from vendor subscriptions now, not from a cut of each order. Every vendor
+gets a 7 day free trial; after it, the share button needs an active subscription. The
+full contract is in [api.md](api.md) under **Vendor billing**.
+
+| Screen | Call |
+|---|---|
+| Billing: trial countdown, active until, plans and prices | `GET /sellers/me/billing` |
+| Subscribe (then redirect to `authorizationUrl`) | `POST /sellers/me/billing/subscribe` with `{ plan }` |
+| Return page after Paystack (poll until `status` is `active`) | `GET /sellers/me/billing/subscriptions/:reference` |
+| The share button | `GET /sellers/me/share` |
+
+- **Grey out the share area when `canShareLink` is `false`**, and show a subscribe prompt.
+- **Get the link from `GET /sellers/me/share`**, not from the slug on your own. This is
+  what makes the restriction work; without it nothing is restricted. A `403` with
+  `SHARING_NOT_ALLOWED` means "subscribe first".
+- Do not hard-code prices: use `plans` from the billing call (the quarterly price may change).
+- Coming back from Paystack proves nothing. Save the `reference` before redirecting and
+  poll the status route (every 3 seconds for 30 seconds, then every 10, for about 5
+  minutes).
+- The old "first 50 orders free" counter (`freeOrdersRemaining`) is meaningless now; remove it.
+- An expired vendor's shop still works for customers. Only the app's share controls are
+  disabled (a product decision the team still has to confirm).
+
 ## 6. Checking your work
 
 - **Customer path:** build against `demo-kitchen`. Placing orders there is fine;

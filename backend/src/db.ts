@@ -7,11 +7,22 @@ import { MissingOrderReportModel } from './models/missing-order-report.js';
 import { OrderModel } from './models/order.js';
 import { PaymentModel } from './models/payment.js';
 import { SellerModel } from './models/seller.js';
+import { SubscriptionModel } from './models/subscription.js';
 
 // Every model whose indexes must exist before the first request. Exported so the
 // tests build exactly this set: a model missing here would silently have no
 // unique indexes in production (autoIndex is off).
-export const models = [SellerModel, MenuModel, OrderModel, EventLogModel, AdminAuditModel, MenuViewDailyModel, MissingOrderReportModel, PaymentModel];
+export const models = [
+  SellerModel,
+  MenuModel,
+  OrderModel,
+  EventLogModel,
+  AdminAuditModel,
+  MenuViewDailyModel,
+  MissingOrderReportModel,
+  PaymentModel,
+  SubscriptionModel,
+];
 
 export async function connectDb(uri: string): Promise<void> {
   await mongoose.connect(uri, {
