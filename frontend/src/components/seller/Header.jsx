@@ -1,5 +1,6 @@
 import { ChopListLogo } from "@/components/choplist-logo";
 import { Link } from "react-router-dom";
+import NotificationsBell from "@/components/seller/NotificationsBell";
 
 export default function SellerHeader({ businessName }) {
   return (
@@ -8,9 +9,12 @@ export default function SellerHeader({ businessName }) {
         <ChopListLogo />
       </Link>
 
-      <p className="max-w-[160px] truncate text-right text-xs font-semibold text-muted-foreground">
-        {businessName}
-      </p>
+      <div className="flex items-center gap-3">
+        <p className="max-w-[140px] truncate text-right text-xs font-semibold text-muted-foreground">
+          {businessName}
+        </p>
+        <NotificationsBell />
+      </div>
     </header>
   );
 }

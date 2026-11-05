@@ -14,6 +14,7 @@ import {
   ChevronUp,
 } from "lucide-react";
 import { ChopListLogo } from "@/components/choplist-logo";
+import NotificationsBell from "@/components/seller/NotificationsBell";
 import { useCurrentSeller } from "@/hooks/useCurrentSeller";
 
 const navigationItems = [
@@ -76,9 +77,12 @@ export default function SellerBottomNav() {
     <>
       <aside className="fixed inset-y-0 left-0 z-50 hidden w-64 flex-col border-r border-border bg-card lg:flex">
         <div className="px-6 pb-6 pt-8">
-          <Link to="/" aria-label="Go to ChopList home">
-            <ChopListLogo />
-          </Link>
+          <div className="flex items-center justify-between gap-2">
+            <Link to="/" aria-label="Go to ChopList home">
+              <ChopListLogo />
+            </Link>
+            <NotificationsBell align="left" />
+          </div>
 
           {seller?.businessName && (
             <p className="mt-3 truncate text-sm font-semibold text-muted-foreground">
