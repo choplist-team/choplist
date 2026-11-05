@@ -109,6 +109,14 @@ export async function recordPaymentEventBestEffort(input: PaymentEventInput): Pr
   }
 }
 
+// The story of one order's money, oldest first: what changed, to what, who caused it
+// and when. For a seller looking at their own order or an admin looking into a
+// dispute. The internal event id is not part of it.
+export async function paymentHistory(orderId: Types.ObjectId) {
+  const events = await OrderPaymentEventModel.find({ orderId }).sort({ at: 1, _id: 1 }).limit(100).lean();
+  return events.map((event) => ({ from: event.from, to: event.to, source: event.source, at: event.at }));
+}
+
 // The customer says they paid by bank transfer. This records a CLAIM with a time; it
 // is not verified funds, the order stays pending and the seller still confirms. Only
 // a pending order whose money is not already reported or confirmed can move, in one

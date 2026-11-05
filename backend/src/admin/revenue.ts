@@ -1,6 +1,8 @@
 import { MenuModel } from '../models/menu.js';
 import { OrderModel } from '../models/order.js';
 import { PaymentModel } from '../models/payment.js';
+import { PaymentQueryModel } from '../models/payment-query.js';
+import { countRefundsDue } from './refunds.js';
 import { SellerModel } from '../models/seller.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -15,7 +17,7 @@ export const PAYMENT_DEFINITIONS = {
   gmv:
     'Gross merchandise value: the total of the order totals (the food, in naira, NOT including any service fee) of orders that reached paid, out for delivery or delivered, counted by the day they were paid. Cancelled and unpaid orders are not included. Paid by Paystack or by bank transfer.',
   revenue:
-    'ChopList\'s own earnings: the sum of the platform fee on payments Paystack confirmed. After a seller\'s free orders this is the percentage of the order; it is 0 during the free orders. It is NOT the service fee (that covers Paystack\'s charge) and bank-transfer orders earn nothing. Refunds are not tracked yet, so a payment on an order that was later cancelled still counts until a person refunds it and it is removed by hand.',
+    'The per-order cut ChopList takes: the sum of the platform fee on payments Paystack confirmed. ChopList no longer takes a cut of each order (it earns from vendor subscriptions, see subscriptions.revenue), so this is 0 unless the per-order fee is switched back on. After a seller\'s free orders this is the percentage of the order; it is 0 during the free orders. It is NOT the service fee (that covers Paystack\'s charge) and bank-transfer orders earn nothing. Refunds are not tracked yet, so a payment on an order that was later cancelled still counts until a person refunds it and it is removed by hand.',
   paidOnPlatform:
     'Orders that reached paid or beyond through Paystack, with their GMV. The same orders are never also counted under paidByTransfer.',
   paidByTransfer:
@@ -27,6 +29,10 @@ export const PAYMENT_DEFINITIONS = {
   sellersOnPlatform:
     'Sellers who have received at least one Paystack-confirmed payment, including during their free orders.',
   onlinePaymentsReady: 'Sellers whose Paystack payout account is set up right now, so customers can pay them online.',
+  refundsDue:
+    'Customer money that ChopList owes back and nobody has refunded yet: a payment confirmed and then the order cancelled, or money that arrived but could not be applied. Refunds are done by hand in the Paystack dashboard and recorded under /api/admin/refunds.',
+  openPaymentQueries:
+    'Payment problems raised by a customer or a seller that no admin has resolved yet (all time).',
   paymentsNeedingReview:
     'Payments where the customer\'s money arrived but the order could not be completed (the seller cancelled it first, the amount was wrong, or the customer paid twice). Each one needs a person to refund or reinstate it; see the event log for the details.',
 } as const;
@@ -55,7 +61,7 @@ type OrdersAndGmv = { orders: number; gmv: number };
 export async function paymentsOverview(now: Date) {
   const since30 = new Date(now.getTime() - 30 * DAY_MS);
 
-  const [orderGroups, paymentGroups, payingAll, payingRecent, onPlatformAll, onPlatformRecent, needingReview, ready] = await Promise.all([
+  const [orderGroups, paymentGroups, payingAll, payingRecent, onPlatformAll, onPlatformRecent, needingReview, ready, refundsDue, openPaymentQueries] = await Promise.all([
     // Paid orders, split by how they were paid and by whether they were paid in
     // the last 30 days. Uses the { status, createdAt } index for the status match.
     OrderModel.aggregate<{ _id: { paystack: boolean; recent: boolean }; orders: number; gmv: number }>([
@@ -79,6 +85,8 @@ export async function paymentsOverview(now: Date) {
     PaymentModel.distinct('sellerId', { status: 'succeeded', paidAt: { $gte: since30 } }),
     PaymentModel.countDocuments({ status: 'needs_review' }),
     SellerModel.countDocuments({ paymentsReady: true, paystackSubaccountCode: { $exists: true, $ne: '' } }),
+    countRefundsDue(),
+    PaymentQueryModel.countDocuments({ status: 'open' }),
   ]);
 
   const orders = { paystack: blank(), transfer: blank() };
@@ -112,6 +120,8 @@ export async function paymentsOverview(now: Date) {
     sellersOnPlatform: { allTime: onPlatformAll.length, last30Days: onPlatformRecent.length } satisfies Period,
     onlinePaymentsReady: ready,
     paymentsNeedingReview: needingReview,
+    refundsDue,
+    openPaymentQueries,
     definitions: PAYMENT_DEFINITIONS,
   };
 }

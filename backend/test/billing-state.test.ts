@@ -108,10 +108,10 @@ describe('verification is recorded, and blocks nothing', () => {
 });
 
 describe('plans in the state', () => {
-  it('lists both plans with their prices, the quarterly one as the placeholder', () => {
+  it('lists both plans with their prices', () => {
     expect(stateAt('2026-11-02T00:00:00.000Z').plans).toEqual([
       { id: 'monthly', months: 1, priceNaira: 3000 },
-      { id: 'quarterly', months: 3, priceNaira: 8000 },
+      { id: 'quarterly', months: 3, priceNaira: 11_000 },
     ]);
   });
 });

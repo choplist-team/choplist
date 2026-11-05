@@ -158,6 +158,8 @@ describe.skipIf(!testDbUri)('GET /api/public/orders/:ref/payment-status on a rea
         paidAt: null,
         onlinePaymentAvailable: true,
         payment: { status: 'unpaid', reportedAt: null, confirmedAt: null, confirmedBy: null },
+        refund: null,
+        cancelReason: null,
       });
     });
 
@@ -304,7 +306,7 @@ describe.skipIf(!testDbUri)('GET /api/public/orders/:ref/payment-status on a rea
       await confirm((await startPay(o)).reference);
       const res = await status(o);
       expect(Object.keys(res.body).sort()).toEqual(
-        ['amountCharged', 'onlinePaymentAvailable', 'orderStatus', 'paid', 'paidAt', 'payment', 'paymentMethod', 'ref', 'reference', 'serviceFee', 'state', 'total'].sort(),
+        ['amountCharged', 'cancelReason', 'onlinePaymentAvailable', 'orderStatus', 'paid', 'paidAt', 'payment', 'paymentMethod', 'ref', 'refund', 'reference', 'serviceFee', 'state', 'total'].sort(),
       );
       const text = JSON.stringify(res.body);
       for (const secret of ['ACCT_', hashAccessKey(o.key), o.key, '+2348091112222', 'Ada Customer', 'Herbert', String(o.sellerId), 'platformFee', 'paystackFee', SECRET]) {

@@ -10,11 +10,13 @@ import type { Payment } from '../models/payment.js';
 //   paid             the order is paid and being prepared; paymentMethod says how
 //   under_review     money arrived but the order could not be completed (e.g. the
 //                    seller cancelled it first); ChopList will sort it out
-//   cancelled        the order was cancelled and nothing was taken
+//   cancelled        the order was cancelled. Nothing was taken, OR it was paid and then
+//                    cancelled, in which case `refund` says the customer's money is being
+//                    returned (see below)
 export const PAYMENT_STATES = ['not_started', 'awaiting_payment', 'paid', 'under_review', 'cancelled'] as const;
 export type PaymentState = (typeof PAYMENT_STATES)[number];
 
-type PaymentRow = Pick<Payment, 'status' | 'reference' | 'amountKobo' | 'serviceFee' | 'paidAt' | 'createdAt'>;
+type PaymentRow = Pick<Payment, 'status' | 'reference' | 'amountKobo' | 'serviceFee' | 'paidAt' | 'createdAt'> & { refund?: { refundedAt?: Date | null } | null | undefined };
 
 export type PaymentStatusView = {
   ref: string;
@@ -35,6 +37,14 @@ export type PaymentStatusView = {
   // Where the money stands: unpaid, customer_reported (the customer said they paid by
   // transfer; not verified), confirmed (by the seller, or by Paystack) or failed.
   payment: OrderPaymentView;
+  // Set when the customer's money is owed back: the order was paid and then cancelled
+  // (state "cancelled"), or the money arrived but could not be applied (state
+  // "under_review"). "due" = ChopList has to refund it; "refunded" = it has been
+  // refunded. null otherwise. ChopList refunds by hand, so "due" can take a while.
+  refund: { status: 'due' | 'refunded' } | null;
+  // Why an order was cancelled when the seller did not do it: "expired" = it was not
+  // paid in time and the portions went back on sale. null otherwise.
+  cancelReason: 'expired' | null;
 };
 
 const PAID_STATUSES = new Set(['paid', 'out_for_delivery', 'delivered']);
@@ -50,7 +60,12 @@ export function buildPaymentStatus(order: OrderDoc, attempts: PaymentRow[], onli
 
   let state: PaymentState;
   let about: PaymentRow | undefined;
-  if (succeeded || (orderPaid && method === 'paystack')) {
+  // Paid online, then cancelled: the money is with Paystack, so say so rather than "paid".
+  const cancelledAfterPayment = order.status === 'cancelled' && Boolean(succeeded);
+  if (cancelledAfterPayment) {
+    state = 'cancelled';
+    about = succeeded;
+  } else if (succeeded || (orderPaid && method === 'paystack')) {
     state = 'paid';
     about = succeeded;
   } else if (flagged) {
@@ -83,5 +98,7 @@ export function buildPaymentStatus(order: OrderDoc, attempts: PaymentRow[], onli
     paidAt: order.paidAt ?? about?.paidAt ?? null,
     onlinePaymentAvailable,
     payment: orderPaymentView(order),
+    refund: cancelledAfterPayment || state === 'under_review' ? { status: about?.refund?.refundedAt ? 'refunded' : 'due' } : null,
+    cancelReason: order.cancelReason ?? null,
   };
 }

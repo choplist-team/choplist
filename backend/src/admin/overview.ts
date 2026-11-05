@@ -2,6 +2,7 @@ import { MenuModel } from '../models/menu.js';
 import { OrderModel } from '../models/order.js';
 import { SellerModel } from '../models/seller.js';
 import { funnelOverview, paymentsOverview } from './revenue.js';
+import { subscriptionsOverview } from './subscriptions.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -46,6 +47,7 @@ export async function overview(now: Date = new Date()) {
     [outcome],
     payments,
     funnel,
+    subscriptions,
   ] = await Promise.all([
     SellerModel.countDocuments({}),
     MenuModel.countDocuments({ status: { $in: ['open', 'closed'] } }),
@@ -79,6 +81,7 @@ export async function overview(now: Date = new Date()) {
     ]),
     paymentsOverview(now),
     funnelOverview(),
+    subscriptionsOverview(now),
   ]);
 
   // A seller with no status stored (created before statuses) is active.
@@ -104,6 +107,8 @@ export async function overview(now: Date = new Date()) {
     ordersCounted: denominator,
     // Money and the seller funnel. Each carries its own definitions.
     payments,
+    // Vendor subscriptions: ChopList's income now that it takes no cut of each order.
+    subscriptions,
     funnel,
     definitions: DEFINITIONS,
   };

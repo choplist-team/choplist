@@ -122,6 +122,7 @@ describe('toSellerOrder never shows the secrets', () => {
         'createdAt',
         'customer',
         'delivery',
+        'cancelReason',
         'deliveredAt',
         'id',
         'lines',

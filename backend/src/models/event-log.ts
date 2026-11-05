@@ -13,6 +13,8 @@ export const EVENT_TYPES = [
   'payment_webhook_issue', // a Paystack confirmation that needs a human look (wrong amount, cancelled order...)
   'subscription_start_failed', // a vendor's subscription payment could not be started
   'subscription_webhook_issue', // a Paystack confirmation of a subscription that needs a human look
+  'payment_query_raised', // a customer or seller says a payment looks wrong (see the payment queries page)
+  'orders_expired', // unpaid orders were cancelled and their portions put back on sale
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 

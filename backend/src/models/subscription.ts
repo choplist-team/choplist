@@ -46,6 +46,8 @@ const subscriptionSchema = new Schema(
     seq: { type: Number, min: 1 },
     // The confirmed subscription this one follows (renews), if any.
     renewalOf: { type: Schema.Types.ObjectId, ref: 'Subscription' },
+    // When the status route last asked Paystack about this attempt (see payments/reconcile.ts).
+    lastCheckedAt: Date,
   },
   { timestamps: true },
 );

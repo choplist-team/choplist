@@ -363,13 +363,29 @@ full contract is in [api.md](api.md) under **Vendor billing**.
 - **Get the link from `GET /sellers/me/share`**, not from the slug on your own. This is
   what makes the restriction work; without it nothing is restricted. A `403` with
   `SHARING_NOT_ALLOWED` means "subscribe first".
-- Do not hard-code prices: use `plans` from the billing call (the quarterly price may change).
+- Do not hard-code prices: use `plans` from the billing call (they are settings and can be changed).
 - Coming back from Paystack proves nothing. Save the `reference` before redirecting and
   poll the status route (every 3 seconds for 30 seconds, then every 10, for about 5
   minutes).
 - The old "first 50 orders free" counter (`freeOrdersRemaining`) is meaningless now; remove it.
 - An expired vendor's shop still works for customers. Only the app's share controls are
   disabled (a product decision the team still has to confirm).
+
+### Refunds, expiry and seeing your payment problems
+
+More fields and routes; the contract is in [api.md](api.md) under **Refunds, expiry, history and queries**.
+
+- **Payment status page.** `refund` and `cancelReason` are new. If `state` is `cancelled` and `refund` is set, the order was paid and then
+  cancelled: say "Your money will be refunded" (`due`) or "has been refunded" (`refunded`). If `cancelReason` is `expired`, say it was
+  cancelled because it was not paid in time. Do not show "Paid" for a cancelled order.
+- **The status page now confirms payments itself** if Paystack's message is lost, so a customer who pays will usually see "Paid" within about
+  half a minute even then. Keep polling as described.
+- **Seller order cards** get `cancelReason` and a payment history (`GET /orders/:ref/payment-history`). Tell a seller who cancels a paid online
+  order that the customer will be refunded.
+- **Payment problems.** Customers and sellers can now read their own queries (`.../payment-queries`) and see the admin's reply. Show them,
+  instead of only the "already open" error.
+- **Orders can be cancelled automatically** when nobody pays within 48 hours (a setting). Sellers will see these as cancelled with
+  `cancelReason: "expired"`.
 
 ## 6. Checking your work
 

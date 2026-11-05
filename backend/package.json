@@ -17,6 +17,7 @@
     "seed:demo": "tsx --env-file=../.env scripts/seed-demo.ts",
     "backfill:admin": "tsx --env-file=../.env scripts/backfill-admin-fields.ts",
     "backfill:billing": "tsx --env-file=../.env scripts/backfill-billing.ts",
+    "expire:orders": "tsx --env-file=../.env scripts/expire-orders.ts",
     "audit:delivery": "tsx --env-file=../.env scripts/audit-delivery-orders.ts",
     "clerk:login-test": "node --env-file=../.env scripts/clerk-login-test.mjs"
   },
