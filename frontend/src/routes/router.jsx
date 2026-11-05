@@ -50,6 +50,16 @@ export const router = createBrowserRouter([
              path: "seller/payment-settings",
             lazy: lazyPage(() => import("../pages/seller/PaymentSettings.jsx")),
           },
+          // Free trial and subscription. "billing/done" is where Paystack sends the seller
+          // after paying (set the server's SUBSCRIPTION_CALLBACK_URL to this page's address).
+          {
+            path: "seller/billing",
+            lazy: lazyPage(() => import("../pages/seller/Billing.jsx")),
+          },
+          {
+            path: "seller/billing/done",
+            lazy: lazyPage(() => import("../pages/seller/BillingDone.jsx")),
+          },
           {
             element: <RequireSellerProfile />,
             children: [

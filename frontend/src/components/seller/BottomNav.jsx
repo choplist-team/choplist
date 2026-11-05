@@ -8,6 +8,7 @@ import {
   Truck,
   UserRound,
   Wallet,
+  CreditCard,
   UserRoundPen,
   LogOut,
   ChevronUp,
@@ -41,9 +42,14 @@ const navigationItems = [
     path: "/seller/payment-settings",
     icon: Wallet,
   },
+  {
+    label: "Billing",
+    path: "/seller/billing",
+    icon: CreditCard,
+  },
 ];
 const mobileNavigationItems = navigationItems.filter(
-  ({ label }) => label !== "Payment Settings"
+  ({ label }) => label !== "Payment Settings" && label !== "Billing"
 );
 
 export default function SellerBottomNav() {
@@ -177,6 +183,19 @@ export default function SellerBottomNav() {
                 >
                   <Wallet className="h-4 w-4" />
                   Payment Settings
+                </button>
+
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setIsAccountMenuOpen(false);
+                    navigate("/seller/billing");
+                  }}
+                  className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-medium text-foreground transition-colors hover:bg-muted"
+                >
+                  <CreditCard className="h-4 w-4" />
+                  Billing
                 </button>
 
                 <button
