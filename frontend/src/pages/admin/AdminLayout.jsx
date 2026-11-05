@@ -13,9 +13,11 @@ import {
   BadgeCheck,
   Inbox,
   ShieldCheck,
+  LogOut,
 } from "lucide-react";
 import { ChopListLogo } from "@/components/choplist-logo";
 import InboxBadge from "@/components/admin/InboxBadge";
+import { useAuth } from "@clerk/react";
 
 const adminNavigation = [
   { label: "Overview", path: "/admin", icon: LayoutDashboard, end: true },
@@ -26,7 +28,11 @@ const adminNavigation = [
   // Money
   { label: "Inbox", path: "/admin/inbox", icon: Inbox, badge: true },
   { label: "Refunds", path: "/admin/refunds", icon: Undo2 },
-  { label: "Payment problems", path: "/admin/payment-problems", icon: MessageSquareWarning },
+  {
+    label: "Payment problems",
+    path: "/admin/payment-problems",
+    icon: MessageSquareWarning,
+  },
   { label: "Subscriptions", path: "/admin/subscriptions", icon: BadgeCheck },
   { label: "System check", path: "/admin/system-check", icon: ShieldCheck },
 ];
@@ -42,14 +48,17 @@ function ChoplistBrand() {
     </div>
   );
 }
-function SidebarContent({ onNavigate }) {
+function SidebarContent({ onNavigate, onLogout }) {
   return (
     <div className="flex h-full flex-col">
-      <div className="border-b border-border px-5 py-5">
+      <div className="shrink-0 border-b border-border px-5 py-5">
         <ChoplistBrand />
       </div>
 
-      <nav aria-label="Admin navigation" className="space-y-1 px-4 pt-6">
+      <nav
+        aria-label="Admin navigation"
+        className="min-h-0 flex-1 space-y-1 overflow-y-auto px-4 py-3"
+      >
         <p className="mb-3 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           Workspace
         </p>
@@ -80,13 +89,15 @@ function SidebarContent({ onNavigate }) {
         })}
       </nav>
 
-      <div className="mt-auto border-t border-border p-4">
-        <div className="rounded-xl bg-muted p-3">
-          <p className="text-sm font-semibold">Admin workspace</p>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            Manage Choplist platform activity.
-          </p>
-        </div>
+      <div className="shrink-0 border-t border-border">
+        <button
+          type="button"
+          onClick={onLogout}
+          className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-destructive transition-colors hover:bg-destructive/10"
+        >
+          <LogOut size={19} />
+          Sign out
+        </button>
       </div>
     </div>
   );
@@ -94,6 +105,13 @@ function SidebarContent({ onNavigate }) {
 
 export default function AdminLayout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { signOut } = useAuth();
+
+  async function handleLogout() {
+    await signOut({
+      redirectUrl: "/admin/sign-in",
+    });
+  }
 
   function closeMobileMenu() {
     setMobileMenuOpen(false);
@@ -103,7 +121,7 @@ export default function AdminLayout() {
     <div className="min-h-screen bg-background text-foreground">
       {/* Desktop sidebar */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r border-border bg-card lg:block">
-        <SidebarContent />
+        <SidebarContent onLogout={handleLogout} />
       </aside>
 
       {/* Mobile header */}
@@ -132,7 +150,10 @@ export default function AdminLayout() {
           />
 
           <aside className="fixed inset-y-0 left-0 z-40 w-[min(18rem,85vw)] border-r border-border bg-card shadow-xl lg:hidden">
-            <SidebarContent onNavigate={closeMobileMenu} />
+            <SidebarContent
+              onNavigate={closeMobileMenu}
+              onLogout={handleLogout}
+            />
           </aside>
         </>
       )}
