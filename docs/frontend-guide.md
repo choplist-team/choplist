@@ -397,6 +397,28 @@ More routes; the contract is in [api.md](api.md) under **Refunds, expiry, histor
 - **Admin vendor page.** Grant, cancel and mark-refunded buttons for subscriptions, and a verification selector. A grant needs a reason.
 - **Admin system check.** `GET /admin/system` lists warnings (a live Paystack key, a missing return page...). Make the live-key warning impossible to miss.
 
+### The admin money screens (a first version, built by the backend engineer)
+
+So the backend's admin features can be used and checked, a first version of these screens exists. **They are a starting point for the frontend team to edit, restyle and
+check**, not a finished design. All of them are admin-only and sit under `/admin` (behind `RequireAdmin`):
+
+| Screen | Route | File | Calls |
+|---|---|---|---|
+| Inbox (with an unread badge in the menu) | `/admin/inbox` | `pages/admin/AdminInbox.jsx`, `components/admin/InboxBadge.jsx` | `GET /admin/notifications`, `POST /admin/notifications/read` |
+| Refunds | `/admin/refunds` | `pages/admin/AdminRefunds.jsx` | `GET /admin/refunds`, `PATCH /admin/refunds/:id/mark-refunded` |
+| Payment problems | `/admin/payment-problems` | `pages/admin/AdminPaymentQueries.jsx` | `GET /admin/payment-queries`, `PATCH .../:id/resolve` |
+| Subscriptions | `/admin/subscriptions` | `pages/admin/AdminSubscriptions.jsx` | `GET /admin/subscriptions`, `PATCH .../:id/cancel`, `PATCH .../:id/mark-refunded`, plus the overview figures |
+| System check | `/admin/system-check` | `pages/admin/AdminSystemCheck.jsx` | `GET /admin/system` |
+| Money figures on the overview | `/admin` | `components/admin/PaymentsOverviewSection.jsx` | `GET /admin/overview` |
+| Trial, subscription and verification on a vendor's page | `/admin/sellers/:id` | `components/admin/SellerBillingPanel.jsx` | `POST /admin/sellers/:id/subscriptions`, `PATCH /admin/sellers/:id/verification` |
+
+How it is organised, so it is easy to change:
+- **All the calls** are in `api/admin-payments-api.js` (one function per route, same style as `admin-api.js`).
+- **The shared look** (cards, badges, tables, the "add a note then confirm" button) is in `components/admin/admin-ui.jsx`; the number, naira and date formatting is in `components/admin/admin-format.js`. Restyle there and every money page follows.
+- **Existing files were only added to**, not rewritten: the routes (`routes/router.jsx`), the menu (`AdminLayout.jsx`), the overview and vendor page (one component each), and the System Health event and audit filter lists (new entries).
+
+What was and was not checked: the code passes the linter and builds, and the pages' own API functions were run against the real backend and every field the screens read was confirmed to exist. **The screens themselves have not been looked at in a browser by the person who wrote them**, so expect layout and wording to need fixes.
+
 ## 6. Checking your work
 
 - **Customer path:** build against `demo-kitchen`. Placing orders there is fine;

@@ -30,6 +30,13 @@ const eventTypes = [
   { value: "server_error", label: "Server errors" },
   { value: "notification_failed", label: "Notification failures" },
   { value: "missing_order_report", label: "Missing-order reports" },
+  { value: "payment_setup_failed", label: "Seller payout setup failed" },
+  { value: "payment_start_failed", label: "Customer payment could not start" },
+  { value: "payment_webhook_issue", label: "Payment needs a look" },
+  { value: "subscription_start_failed", label: "Subscription payment could not start" },
+  { value: "subscription_webhook_issue", label: "Subscription payment needs a look" },
+  { value: "payment_query_raised", label: "Payment problem reported" },
+  { value: "orders_expired", label: "Unpaid orders cancelled" },
 ];
 
 const eventLevels = [
@@ -51,6 +58,12 @@ const auditActions = [
   { value: "seller.reinstate", label: "Seller reinstated" },
   { value: "order.reveal_phone", label: "Order phone revealed" },
   { value: "report.resolve", label: "Report resolved" },
+  { value: "payment_query.resolve", label: "Payment problem resolved" },
+  { value: "refund.mark_refunded", label: "Refund recorded" },
+  { value: "subscription.grant", label: "Free subscription given" },
+  { value: "subscription.cancel", label: "Subscription cancelled" },
+  { value: "subscription.mark_refunded", label: "Subscription refund recorded" },
+  { value: "seller.set_verification", label: "Verification set" },
 ];
 
 function formatNumber(value) {

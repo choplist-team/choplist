@@ -156,6 +156,9 @@ export async function listSubscriptions(query: z.infer<typeof subscriptionListQu
         startsAt: (r.startsAt as Date | undefined) ?? null,
         expiresAt: (r.expiresAt as Date | undefined) ?? null,
         createdAt: r.createdAt as Date,
+        cancelledAt: (r.cancelledAt as Date | undefined) ?? null,
+        // True once an admin has recorded refunding it (so a screen can hide the button).
+        refunded: Boolean(r.refund),
         seller: seller ? { id: seller._id.toString(), businessName: seller.businessName, slug: seller.slug } : null,
       };
     }),

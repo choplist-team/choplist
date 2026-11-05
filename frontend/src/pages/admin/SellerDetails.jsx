@@ -19,6 +19,7 @@ import {
   deactivateAdminSeller,
   reinstateAdminSeller,
 } from "@/api/admin-api";
+import SellerBillingPanel from "@/components/admin/SellerBillingPanel";
 
 const ORDER_STATUSES = [
   { key: "total", label: "Total orders" },
@@ -556,6 +557,8 @@ export default function SellerDetails() {
       </div>
 
       {/* Menus */}
+      <SellerBillingPanel sellerId={sellerId} billing={seller.billing} />
+
       <div className="overflow-hidden rounded-xl border border-border bg-card">
         <div className="border-b border-border px-5 py-4">
           <div className="flex items-center gap-2">

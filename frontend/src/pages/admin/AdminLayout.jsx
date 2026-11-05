@@ -8,8 +8,14 @@ import {
   Activity,
   Menu,
   X,
+  Undo2,
+  MessageSquareWarning,
+  BadgeCheck,
+  Inbox,
+  ShieldCheck,
 } from "lucide-react";
 import { ChopListLogo } from "@/components/choplist-logo";
+import InboxBadge from "@/components/admin/InboxBadge";
 
 const adminNavigation = [
   { label: "Overview", path: "/admin", icon: LayoutDashboard, end: true },
@@ -17,6 +23,12 @@ const adminNavigation = [
   { label: "Orders", path: "/admin/orders", icon: ShoppingBag },
   { label: "Analytics", path: "/admin/analytics", icon: ChartNoAxesCombined },
   { label: "System Health", path: "/admin/system-health", icon: Activity },
+  // Money
+  { label: "Inbox", path: "/admin/inbox", icon: Inbox, badge: true },
+  { label: "Refunds", path: "/admin/refunds", icon: Undo2 },
+  { label: "Payment problems", path: "/admin/payment-problems", icon: MessageSquareWarning },
+  { label: "Subscriptions", path: "/admin/subscriptions", icon: BadgeCheck },
+  { label: "System check", path: "/admin/system-check", icon: ShieldCheck },
 ];
 
 function ChoplistBrand() {
@@ -62,6 +74,7 @@ function SidebarContent({ onNavigate }) {
             >
               <Icon size={19} />
               <span>{item.label}</span>
+              {item.badge && <InboxBadge />}
             </NavLink>
           );
         })}
