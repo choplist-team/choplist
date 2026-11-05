@@ -102,7 +102,9 @@ function OrderCard({
     const confirmed = window.confirm(
       `Cancel order ${order.ref}? Its portions will be returned to the menu. ${
         order.status === "paid"
-          ? "If payment was received, handle any refund separately."
+          ? order.paymentMethod === "paystack"
+            ? "This order was paid online, so the customer will need a refund. ChopList will be told to refund them."
+            : "If payment was received, handle any refund separately."
           : ""
       }`
     );
@@ -138,6 +140,28 @@ function OrderCard({
           </span>
         )}
       </div>
+      {order.status === "pending" && order.payment?.status === "customer_reported" && (
+        <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm">
+          <p className="font-semibold text-foreground">Customer says they paid</p>
+          <p className="mt-1 text-muted-foreground">
+            They told us on {formatDateTime(order.payment.reportedAt)}. Check your bank account, then press
+            "Mark paid". Do not mark it paid until the money has arrived.
+          </p>
+        </div>
+      )}
+
+      {order.status === "pending" && order.payment?.status === "failed" && (
+        <p className="mt-3 rounded-lg bg-muted p-3 text-sm text-muted-foreground">
+          The customer's online payment failed. They can try again or pay by transfer.
+        </p>
+      )}
+
+      {order.status === "cancelled" && order.cancelReason === "expired" && (
+        <p className="mt-3 rounded-lg bg-muted p-3 text-sm text-muted-foreground">
+          Cancelled automatically because it was not paid in time. Its portions are back on your menu.
+        </p>
+      )}
+
       <div className="mt-4 border-t border-border pt-4">
         <h3 className="font-semibold text-foreground">
           {order.customer?.name ?? "Customer"}
