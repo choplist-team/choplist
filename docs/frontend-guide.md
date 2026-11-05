@@ -419,6 +419,29 @@ How it is organised, so it is easy to change:
 
 What was and was not checked: the code passes the linter and builds, and the pages' own API functions were run against the real backend and every field the screens read was confirmed to exist. **The screens themselves have not been looked at in a browser by the person who wrote them**, so expect layout and wording to need fixes.
 
+### The seller and customer money screens (a first version, built by the backend engineer)
+
+Like the admin screens above, these are **a starting point for the frontend team to review, edit or roll back**, not a finished design. They are plain on purpose, each in
+its own small file, with comments saying what the page does and why.
+
+| What | Where | Calls |
+|---|---|---|
+| **Share button asks the server first** (blocked with a "see plans" prompt once the trial has ended) | `pages/seller/SellerDashboard.jsx` (small edit), `hooks/useSellerBilling.js` | `GET /sellers/me/billing`, `GET /sellers/me/share` |
+| **Billing page**: trial or subscription status, plans and prices, Subscribe, payment history | `pages/seller/Billing.jsx` at `/seller/billing`; menu entry in `components/seller/BottomNav.jsx` | `GET /sellers/me/billing`, `POST .../billing/subscribe`, `GET .../billing/subscriptions` |
+| **Billing return page** after Paystack: waits until the subscription is active | `pages/seller/BillingDone.jsx` at `/seller/billing/done` | `GET .../billing/subscriptions/:reference` |
+| **Customer order page**: price before Pay (card fee), optional receipt email, "I've paid" for transfers, report a payment problem, friendlier status words, refund and "not paid in time" wording | `pages/customer/CustomerConfirmation.jsx` (small inserts) and `components/customer/PaymentQuotePreview.jsx`, `ReportPaidButton.jsx`, `PaymentProblem.jsx` | `GET .../payment-quote`, `POST .../pay` (with `email`), `POST .../report-paid`, `POST/GET .../payment-query(ies)` |
+| **Seller order cards**: "Customer says they paid", failed online payment, "not paid in time", a cancel warning for online-paid orders | `pages/seller/SellerOrders.jsx` (small inserts) | the `payment` and `cancelReason` fields already on each order |
+| **Seller bell** (mobile header and desktop sidebar) | `components/seller/NotificationsBell.jsx`, `hooks/useSellerNotifications.js`, `Header.jsx`, `BottomNav.jsx` | `GET /sellers/me/notifications`, `POST .../read` |
+| **Removed**: the "free online orders remaining" counter | `pages/seller/PaymentSettings.jsx` | (the per-order fee is off, so it meant nothing) |
+
+Where the code is:
+- **All the new calls** are in `api/seller-billing-api.js` and `api/customer-payments-api.js` (one function per route), plus the optional `email` added to `startOrderPayment` in `api/customer-api.js`.
+- **Money and date formatting** for the new pages is in `lib/money.js`.
+
+To make the subscription return work, set the server's `SUBSCRIPTION_CALLBACK_URL` to `https://choplistafrica.com/seller/billing/done`, and `SHARE_URL_BASE` to `https://choplistafrica.com/shop`.
+
+What was and was not checked: the files pass the linter and the project builds, and the pages' own API functions were run, unchanged, against the real backend over HTTP, with every field the screens read confirmed. **The screens have not been looked at in a browser by the person who wrote them**, so layout, wording and mobile behaviour need a real look.
+
 ## 6. Checking your work
 
 - **Customer path:** build against `demo-kitchen`. Placing orders there is fine;
