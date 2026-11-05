@@ -50,6 +50,16 @@ export const router = createBrowserRouter([
              path: "seller/payment-settings",
             lazy: lazyPage(() => import("../pages/seller/PaymentSettings.jsx")),
           },
+          // Free trial and subscription. "billing/done" is where Paystack sends the seller
+          // after paying (set the server's SUBSCRIPTION_CALLBACK_URL to this page's address).
+          {
+            path: "seller/billing",
+            lazy: lazyPage(() => import("../pages/seller/Billing.jsx")),
+          },
+          {
+            path: "seller/billing/done",
+            lazy: lazyPage(() => import("../pages/seller/BillingDone.jsx")),
+          },
           {
             element: <RequireSellerProfile />,
             children: [
@@ -158,6 +168,35 @@ export const router = createBrowserRouter([
                 path: "system-health",
                 lazy: lazyPage(() =>
                   import("../pages/admin/AdminSystemHealth.jsx")
+                ),
+              },
+
+              // Money pages: refunds, payment problems, subscriptions, the inbox and the
+              // system check. See docs/api.md for what each route returns.
+              {
+                path: "refunds",
+                lazy: lazyPage(() => import("../pages/admin/AdminRefunds.jsx")),
+              },
+              {
+                path: "payment-problems",
+                lazy: lazyPage(() =>
+                  import("../pages/admin/AdminPaymentQueries.jsx")
+                ),
+              },
+              {
+                path: "subscriptions",
+                lazy: lazyPage(() =>
+                  import("../pages/admin/AdminSubscriptions.jsx")
+                ),
+              },
+              {
+                path: "inbox",
+                lazy: lazyPage(() => import("../pages/admin/AdminInbox.jsx")),
+              },
+              {
+                path: "system-check",
+                lazy: lazyPage(() =>
+                  import("../pages/admin/AdminSystemCheck.jsx")
                 ),
               },
             ],

@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 import { getAdminOverview } from "@/api/admin-api";
+import PaymentsOverviewSection from "@/components/admin/PaymentsOverviewSection";
 import { ApiError } from "@/api/api-client";
 
 const metrics = [
@@ -344,6 +345,8 @@ export default function AdminOverview() {
           {formatNumber(overview.ordersCounted)} counted orders.
         </p>
       )}
+
+      <PaymentsOverviewSection overview={overview} />
 
       {overview.generatedAt && (
         <p className="mt-2 text-xs text-muted-foreground">

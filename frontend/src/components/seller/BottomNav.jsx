@@ -8,11 +8,13 @@ import {
   Truck,
   UserRound,
   Wallet,
+  CreditCard,
   UserRoundPen,
   LogOut,
   ChevronUp,
 } from "lucide-react";
 import { ChopListLogo } from "@/components/choplist-logo";
+import NotificationsBell from "@/components/seller/NotificationsBell";
 import { useCurrentSeller } from "@/hooks/useCurrentSeller";
 
 const navigationItems = [
@@ -41,9 +43,14 @@ const navigationItems = [
     path: "/seller/payment-settings",
     icon: Wallet,
   },
+  {
+    label: "Billing",
+    path: "/seller/billing",
+    icon: CreditCard,
+  },
 ];
 const mobileNavigationItems = navigationItems.filter(
-  ({ label }) => label !== "Payment Settings"
+  ({ label }) => label !== "Payment Settings" && label !== "Billing"
 );
 
 export default function SellerBottomNav() {
@@ -70,9 +77,12 @@ export default function SellerBottomNav() {
     <>
       <aside className="fixed inset-y-0 left-0 z-50 hidden w-64 flex-col border-r border-border bg-card lg:flex">
         <div className="px-6 pb-6 pt-8">
-          <Link to="/" aria-label="Go to ChopList home">
-            <ChopListLogo />
-          </Link>
+          <div className="flex items-center justify-between gap-2">
+            <Link to="/" aria-label="Go to ChopList home">
+              <ChopListLogo />
+            </Link>
+            <NotificationsBell align="left" />
+          </div>
 
           {seller?.businessName && (
             <p className="mt-3 truncate text-sm font-semibold text-muted-foreground">
@@ -177,6 +187,19 @@ export default function SellerBottomNav() {
                 >
                   <Wallet className="h-4 w-4" />
                   Payment Settings
+                </button>
+
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setIsAccountMenuOpen(false);
+                    navigate("/seller/billing");
+                  }}
+                  className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-medium text-foreground transition-colors hover:bg-muted"
+                >
+                  <CreditCard className="h-4 w-4" />
+                  Billing
                 </button>
 
                 <button

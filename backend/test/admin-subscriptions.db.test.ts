@@ -141,6 +141,7 @@ describe.skipIf(!testDbUri)('admin view of subscriptions, on a real MongoDB', ()
       expect(all.body.pagination).toMatchObject({ total: 3 });
       expect(all.body.subscriptions[0]).toMatchObject({ id: pending._id.toString(), status: 'pending', seller: { id: b._id.toString(), businessName: b.businessName, slug: b.slug } });
       expect(all.body.subscriptions.at(-1).id).toBe(first._id.toString());
+      expect(all.body.subscriptions[0]).toMatchObject({ refunded: false, cancelledAt: null });
 
       const get = (q: string) => request(app).get(`/api/admin/subscriptions${q}`).set(asAdmin);
       expect((await get('?status=pending')).body.subscriptions).toHaveLength(1);

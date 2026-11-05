@@ -2203,7 +2203,7 @@ may have settled the seller's share to the seller's bank. How Paystack takes a r
   ],
   "dueCount": 1,
   "definitions": { "due": "...", "cancelled_after_payment": "...", "money_held": "...", "refunded": "..." },
-  "pagination": { "page": 1, "limit": 20, "total": 1, "pages": 1 }
+  "pagination": { "page": 1, "limit": 20, "total": 1, "totalPages": 1 }
 }
 ```
 
@@ -2296,7 +2296,8 @@ payment-queries page. **Who that is has not been decided.** Real notifications a
   `purchases` (`allTime`, `last30Days`, `monthly`, `quarterly`), `needsReview`, and `definitions` for each. This is ChopList's
   income now that it takes no cut of each order; `payments.revenue` (the per-order cut) is 0 unless that fee is switched back on.
 - **`GET /api/admin/subscriptions?status=&plan=&sellerId=&page=&limit=`**: every attempt, newest first, with the vendor (id,
-  name, slug) and the plan, amount, reference and dates. No bank, phone or email.
+  name, slug) and the plan, `source`, amount, reference, dates, `cancelledAt` and `refunded` (true once a refund was recorded; a screen
+  uses it to hide the "mark refunded" button). No bank, phone or email.
 - **`GET /api/admin/sellers/:id`** has a `billing` block: `state` (`trial`, `active`, `expired`, or `null` for a seller from before
   billing whose trial has not started), `canShareLink`, the trial dates, `subscription`, `accessEndsAt` and `verification`.
   Looking at a vendor **never** starts their trial.

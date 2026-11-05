@@ -397,6 +397,51 @@ More routes; the contract is in [api.md](api.md) under **Refunds, expiry, histor
 - **Admin vendor page.** Grant, cancel and mark-refunded buttons for subscriptions, and a verification selector. A grant needs a reason.
 - **Admin system check.** `GET /admin/system` lists warnings (a live Paystack key, a missing return page...). Make the live-key warning impossible to miss.
 
+### The admin money screens (a first version, built by the backend engineer)
+
+So the backend's admin features can be used and checked, a first version of these screens exists. **They are a starting point for the frontend team to edit, restyle and
+check**, not a finished design. All of them are admin-only and sit under `/admin` (behind `RequireAdmin`):
+
+| Screen | Route | File | Calls |
+|---|---|---|---|
+| Inbox (with an unread badge in the menu) | `/admin/inbox` | `pages/admin/AdminInbox.jsx`, `components/admin/InboxBadge.jsx` | `GET /admin/notifications`, `POST /admin/notifications/read` |
+| Refunds | `/admin/refunds` | `pages/admin/AdminRefunds.jsx` | `GET /admin/refunds`, `PATCH /admin/refunds/:id/mark-refunded` |
+| Payment problems | `/admin/payment-problems` | `pages/admin/AdminPaymentQueries.jsx` | `GET /admin/payment-queries`, `PATCH .../:id/resolve` |
+| Subscriptions | `/admin/subscriptions` | `pages/admin/AdminSubscriptions.jsx` | `GET /admin/subscriptions`, `PATCH .../:id/cancel`, `PATCH .../:id/mark-refunded`, plus the overview figures |
+| System check | `/admin/system-check` | `pages/admin/AdminSystemCheck.jsx` | `GET /admin/system` |
+| Money figures on the overview | `/admin` | `components/admin/PaymentsOverviewSection.jsx` | `GET /admin/overview` |
+| Trial, subscription and verification on a vendor's page | `/admin/sellers/:id` | `components/admin/SellerBillingPanel.jsx` | `POST /admin/sellers/:id/subscriptions`, `PATCH /admin/sellers/:id/verification` |
+
+How it is organised, so it is easy to change:
+- **All the calls** are in `api/admin-payments-api.js` (one function per route, same style as `admin-api.js`).
+- **The shared look** (cards, badges, tables, the "add a note then confirm" button) is in `components/admin/admin-ui.jsx`; the number, naira and date formatting is in `components/admin/admin-format.js`. Restyle there and every money page follows.
+- **Existing files were only added to**, not rewritten: the routes (`routes/router.jsx`), the menu (`AdminLayout.jsx`), the overview and vendor page (one component each), and the System Health event and audit filter lists (new entries).
+
+What was and was not checked: the code passes the linter and builds, and the pages' own API functions were run against the real backend and every field the screens read was confirmed to exist. **The screens themselves have not been looked at in a browser by the person who wrote them**, so expect layout and wording to need fixes.
+
+### The seller and customer money screens (a first version, built by the backend engineer)
+
+Like the admin screens above, these are **a starting point for the frontend team to review, edit or roll back**, not a finished design. They are plain on purpose, each in
+its own small file, with comments saying what the page does and why.
+
+| What | Where | Calls |
+|---|---|---|
+| **Share button asks the server first** (blocked with a "see plans" prompt once the trial has ended) | `pages/seller/SellerDashboard.jsx` (small edit), `hooks/useSellerBilling.js` | `GET /sellers/me/billing`, `GET /sellers/me/share` |
+| **Billing page**: trial or subscription status, plans and prices, Subscribe, payment history | `pages/seller/Billing.jsx` at `/seller/billing`; menu entry in `components/seller/BottomNav.jsx` | `GET /sellers/me/billing`, `POST .../billing/subscribe`, `GET .../billing/subscriptions` |
+| **Billing return page** after Paystack: waits until the subscription is active | `pages/seller/BillingDone.jsx` at `/seller/billing/done` | `GET .../billing/subscriptions/:reference` |
+| **Customer order page**: price before Pay (card fee), optional receipt email, "I've paid" for transfers, report a payment problem, friendlier status words, refund and "not paid in time" wording | `pages/customer/CustomerConfirmation.jsx` (small inserts) and `components/customer/PaymentQuotePreview.jsx`, `ReportPaidButton.jsx`, `PaymentProblem.jsx` | `GET .../payment-quote`, `POST .../pay` (with `email`), `POST .../report-paid`, `POST/GET .../payment-query(ies)` |
+| **Seller order cards**: "Customer says they paid", failed online payment, "not paid in time", a cancel warning for online-paid orders | `pages/seller/SellerOrders.jsx` (small inserts) | the `payment` and `cancelReason` fields already on each order |
+| **Seller bell** (mobile header and desktop sidebar) | `components/seller/NotificationsBell.jsx`, `hooks/useSellerNotifications.js`, `Header.jsx`, `BottomNav.jsx` | `GET /sellers/me/notifications`, `POST .../read` |
+| **Removed**: the "free online orders remaining" counter | `pages/seller/PaymentSettings.jsx` | (the per-order fee is off, so it meant nothing) |
+
+Where the code is:
+- **All the new calls** are in `api/seller-billing-api.js` and `api/customer-payments-api.js` (one function per route), plus the optional `email` added to `startOrderPayment` in `api/customer-api.js`.
+- **Money and date formatting** for the new pages is in `lib/money.js`.
+
+To make the subscription return work, set the server's `SUBSCRIPTION_CALLBACK_URL` to `https://choplistafrica.com/seller/billing/done`, and `SHARE_URL_BASE` to `https://choplistafrica.com/shop`.
+
+What was and was not checked: the files pass the linter and the project builds, and the pages' own API functions were run, unchanged, against the real backend over HTTP, with every field the screens read confirmed. **The screens have not been looked at in a browser by the person who wrote them**, so layout, wording and mobile behaviour need a real look.
+
 ## 6. Checking your work
 
 - **Customer path:** build against `demo-kitchen`. Placing orders there is fine;

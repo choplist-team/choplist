@@ -23,7 +23,7 @@ until the service restarts). All are described in `.env.example`.
 | `PAYSTACK_CALLBACK_URL` | The frontend page Paystack sends the customer back to after paying, e.g. `https://choplistafrica.com/pay/done`. **Agree the page with the frontend team first** |
 | `ORDER_EXPIRY_HOURS` | `48` (optional). Unpaid orders older than this are cancelled and their portions put back on sale; `0` switches it off. See api.md, Expiry. **Agree the number with the team before relying on it** |
 | `PLATFORM_FEE_BPS` | `0` (ChopList takes no cut of each order; it earns from subscriptions). The default is 0, so leaving it unset is the same. Setting it above 0 switches the old tiers back on (`FREE_ORDERS` free orders, then this many basis points) |
-| `SUBSCRIPTION_CALLBACK_URL` | The frontend page Paystack sends a vendor back to after paying a subscription. **Agree the page with the frontend team first**; it is not the customer's page |
+| `SUBSCRIPTION_CALLBACK_URL` | The frontend page Paystack sends a vendor back to after paying a subscription: `https://choplistafrica.com/seller/billing/done` (this page exists in the frontend now). It is not the customer's page |
 | `SHARE_URL_BASE` | Start of a shop link without the slug, e.g. `https://choplistafrica.com/shop` (optional) |
 | `TRIAL_DAYS` | `7` (optional) |
 | `SUBSCRIPTION_MONTHLY_NAIRA` | `3000` (optional) |

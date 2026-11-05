@@ -169,16 +169,6 @@ export default function PaymentSettings() {
                     </p>
                   )}
                 </div>
-
-                <div className="border-t border-border pt-4">
-                  <p className="text-sm text-muted-foreground">
-                    Free online orders remaining
-                  </p>
-
-                  <p className="mt-1 text-2xl font-bold text-foreground">
-                    {paymentStatus?.freeOrdersRemaining ?? 0}
-                  </p>
-                </div>
               </>
             )}
           </div>
