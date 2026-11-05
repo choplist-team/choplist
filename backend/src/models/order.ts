@@ -23,6 +23,31 @@ export function orderPaymentMethod(order: { paymentMethod?: string | null }): Pa
   return order.paymentMethod === 'paystack' ? 'paystack' : 'transfer';
 }
 
+// Where the MONEY stands, kept apart from where the order is in its life (status).
+//   unpaid             nothing claimed or confirmed yet
+//   customer_reported  the customer says they paid by bank transfer. NOT verified
+//                      funds: the seller still has to confirm it
+//   confirmed          the money is confirmed: by the seller (bank transfer) or by
+//                      Paystack (online). An order's status becomes 'paid' with it
+//   failed             Paystack reported the online payment failed
+// 'paid' as an ORDER status is still what delivery, the prep sheet and the admin
+// figures key on, so it stays; this says how it got there.
+export const ORDER_PAYMENT_STATUSES = ['unpaid', 'customer_reported', 'confirmed', 'failed'] as const;
+export type OrderPaymentStatus = (typeof ORDER_PAYMENT_STATUSES)[number];
+export const PAYMENT_CONFIRMERS = ['seller', 'paystack'] as const;
+export type PaymentConfirmer = (typeof PAYMENT_CONFIRMERS)[number];
+
+const orderPaymentSchema = new Schema(
+  {
+    status: { type: String, enum: ORDER_PAYMENT_STATUSES, required: true, default: 'unpaid' },
+    // When the customer pressed "I've paid" (bank transfer only).
+    reportedAt: Date,
+    confirmedAt: Date,
+    confirmedBy: { type: String, enum: PAYMENT_CONFIRMERS },
+  },
+  { _id: false },
+);
+
 // "CL-" plus 5 characters with no 0/O/1/I, so a customer reading it out on
 // WhatsApp can't confuse them.
 export const REF_PATTERN = /^CL-[2-9A-HJ-NP-Z]{5}$/;
@@ -104,6 +129,10 @@ const orderSchema = new Schema(
     // How this order is paid. Orders from before Paystack have no value and are
     // transfers (see orderPaymentMethod()).
     paymentMethod: { type: String, enum: PAYMENT_METHODS, default: 'transfer' },
+    // Where the money stands (see ORDER_PAYMENT_STATUSES). Orders from before this
+    // field have none; read it through orderPaymentView() in orders/payment-state.ts,
+    // never directly.
+    payment: { type: orderPaymentSchema, default: () => ({ status: 'unpaid' }) },
     // Extra the customer pays on top of `total` (whole naira) so the seller still
     // receives the full `total`. Set when a Paystack payment is started, only in
     // the seller's "customer pays fees" mode; 0 otherwise. The amount to pay is

@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { Types } from 'mongoose';
 import { ZodError } from 'zod';
 import { AppError } from '../errors.js';
@@ -12,7 +12,9 @@ import { placeOrder } from '../orders/place-order.js';
 import { startPayment, type PayOptions } from '../payments/pay.js';
 import { buildPaymentStatus } from '../payments/status.js';
 import { PaymentModel } from '../models/payment.js';
+import { orderPaymentView, reportPaidByCustomer } from '../orders/payment-state.js';
 import { missingOrderBody, submitMissingOrderReport } from '../support/missing-order.js';
+import { paymentQueryBody, raisePaymentQuery } from '../support/payment-query.js';
 import { createRateLimiters, type RateLimitSettings } from '../middleware/rate-limit.js';
 import { lookupSchema, placeOrderSchema } from './schema.js';
 
@@ -78,6 +80,8 @@ function toPublicOrder(order: OrderDoc, delivery: { code: string | null; hidden:
     total: order.total,
     delivery: { area: order.delivery.area, day: order.delivery.day },
     createdAt: order.createdAt,
+    // Where the money stands (unpaid, customer_reported, confirmed, failed).
+    payment: orderPaymentView(order),
   };
 }
 
@@ -214,6 +218,35 @@ export function createPublicRouter(rateLimits: RateLimitSettings, pay: PayOption
     if (!seller) throw new Error(`Seller ${order.sellerId.toString()} missing for order ${order.ref}`);
 
     res.json(await startPayment(order, seller, pay));
+  });
+
+  // The order for a request that proves it is the customer: the ref in the URL and the
+  // access key header. A wrong ref, a wrong key and a missing key all give the same 404.
+  async function orderForKey(req: Request): Promise<OrderDoc> {
+    const ref = String(req.params.ref ?? '').trim().toUpperCase();
+    const notFound = new AppError(404, 'ORDER_NOT_FOUND', 'No order matches that reference and key');
+    if (!REF_PATTERN.test(ref)) throw notFound;
+    const order = await OrderModel.findOne({ ref }).select('+accessKeyHash');
+    if (!order || !accessKeyMatches(req.get('x-order-key'), order.accessKeyHash)) throw notFound;
+    return order;
+  }
+
+  // "I've paid" for a bank transfer. Records the customer's CLAIM with a time. It is
+  // not verified funds: the order stays pending and the seller still confirms. Safe to
+  // press twice (the first time is kept). Never used for Paystack, which confirms
+  // itself. A cancelled order is a 409.
+  router.post('/orders/:ref/report-paid', limit.payments, async (req, res) => {
+    const { order } = await reportPaidByCustomer(await orderForKey(req));
+    const payment = orderPaymentView(order);
+    res.set('Cache-Control', 'no-store');
+    res.json({ ref: order.ref, orderStatus: order.status, paid: payment.status === 'confirmed', payment });
+  });
+
+  // "Something is wrong with this payment." Recorded for ChopList to look at; it
+  // changes nothing about the order or the money. One open query per order.
+  router.post('/orders/:ref/payment-query', limit.reports, async (req, res) => {
+    const order = await orderForKey(req);
+    res.status(201).json(await raisePaymentQuery(order, 'customer', paymentQueryBody.parse(req.body)));
   });
 
   // Where this order stands on payment: for the page the customer lands on after

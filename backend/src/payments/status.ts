@@ -1,5 +1,6 @@
 import type { OrderDoc } from '../models/order.js';
 import { orderPaymentMethod } from '../models/order.js';
+import { orderPaymentView, type OrderPaymentView } from '../orders/payment-state.js';
 import type { Payment } from '../models/payment.js';
 
 // Where the customer stands on paying, in words the page can switch on.
@@ -31,6 +32,9 @@ export type PaymentStatusView = {
   paidAt: Date | null;
   // Whether the Pay button should be offered right now.
   onlinePaymentAvailable: boolean;
+  // Where the money stands: unpaid, customer_reported (the customer said they paid by
+  // transfer; not verified), confirmed (by the seller, or by Paystack) or failed.
+  payment: OrderPaymentView;
 };
 
 const PAID_STATUSES = new Set(['paid', 'out_for_delivery', 'delivered']);
@@ -78,5 +82,6 @@ export function buildPaymentStatus(order: OrderDoc, attempts: PaymentRow[], onli
     reference: about?.reference ?? null,
     paidAt: order.paidAt ?? about?.paidAt ?? null,
     onlinePaymentAvailable,
+    payment: orderPaymentView(order),
   };
 }

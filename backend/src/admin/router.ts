@@ -11,6 +11,7 @@ import {
   menuAnalyticsQuery,
 } from './analytics.js';
 import { auditListQuery, listAudit } from './audit.js';
+import { listPaymentQueries, paymentQueryListQuery, paymentQueryResolveBody, parsePaymentQueryId, resolvePaymentQuery } from './payment-queries.js';
 import { listOrders, orderDetail, orderDetailQuery, orderListQuery } from './orders.js';
 import { eventListQuery, health, listEvents, listReports, parseReportId, reportListQuery, resolveBody, resolveReport } from './support.js';
 import { overview } from './overview.js';
@@ -107,6 +108,16 @@ export function createAdminRouter(auth: AuthProvider, adminIds: readonly string[
   router.patch('/reports/:id/resolve', async (req, res) => {
     const { note } = resolveBody.parse(req.body ?? {});
     res.json(await resolveReport({ id: parseReportId(req.params.id), adminId: currentAdminId(req), note }));
+  });
+
+  // ---- Payment queries (customers and sellers saying a payment is wrong) ----
+  router.get('/payment-queries', async (req, res) => {
+    res.json(await listPaymentQueries(paymentQueryListQuery.parse(req.query)));
+  });
+
+  router.patch('/payment-queries/:id/resolve', async (req, res) => {
+    const { note } = paymentQueryResolveBody.parse(req.body ?? {});
+    res.json(await resolvePaymentQuery({ id: parsePaymentQueryId(req.params.id), adminId: currentAdminId(req), note }));
   });
 
   // ---- Audit trail ----

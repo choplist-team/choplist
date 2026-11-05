@@ -5,7 +5,9 @@ import { EventLogModel } from './models/event-log.js';
 import { MenuViewDailyModel } from './models/menu-view-daily.js';
 import { MissingOrderReportModel } from './models/missing-order-report.js';
 import { OrderModel } from './models/order.js';
+import { OrderPaymentEventModel } from './models/order-payment-event.js';
 import { PaymentModel } from './models/payment.js';
+import { PaymentQueryModel } from './models/payment-query.js';
 import { SellerModel } from './models/seller.js';
 import { SubscriptionModel } from './models/subscription.js';
 
@@ -22,6 +24,8 @@ export const models = [
   MissingOrderReportModel,
   PaymentModel,
   SubscriptionModel,
+  OrderPaymentEventModel,
+  PaymentQueryModel,
 ];
 
 export async function connectDb(uri: string): Promise<void> {

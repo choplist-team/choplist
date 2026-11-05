@@ -128,6 +128,7 @@ describe('toSellerOrder never shows the secrets', () => {
         'note',
         'outForDeliveryAt',
         'paidAt',
+        'payment',
         'paymentMethod',
         'ref',
         'status',

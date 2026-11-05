@@ -3,7 +3,9 @@ import { authenticate, currentSellerId, requireSeller } from '../auth/middleware
 import type { AuthProvider } from '../auth/provider.js';
 import { AppError } from '../errors.js';
 import { OrderModel, REF_PATTERN, type OrderDoc } from '../models/order.js';
+import { paymentQueryBody, raisePaymentQuery } from '../support/payment-query.js';
 import { confirmDelivery, markOutForDelivery, resetDeliveryCode } from './delivery.js';
+import { confirmationFields, orderPaymentView, recordPaymentEventBestEffort } from './payment-state.js';
 import { confirmDeliverySchema } from './schema.js';
 import { toSellerOrder } from './seller-view.js';
 import { returnStock } from './stock.js';
@@ -33,15 +35,30 @@ export function createOrderRouter(auth: AuthProvider): Router {
   // pending -> paid. Idempotent: marking a paid order paid again returns it
   // unchanged (same paidAt). A cancelled order cannot be paid: its stock is
   // already back on sale.
+  //
+  // This is the seller CONFIRMING the money (a bank transfer): the order's payment
+  // record becomes confirmed by the seller in the same write that makes it paid, and
+  // a customer's earlier "I've paid" (reportedAt) is kept. Only the one request that
+  // wins the pending -> paid write adds the history entry.
   router.patch('/:ref/paid', async (req, res) => {
     const filter = orderFilter(req);
-    const paid = await OrderModel.findOneAndUpdate(
+    const now = new Date();
+    const before = await OrderModel.findOneAndUpdate(
       { ...filter, status: 'pending' },
-      { $set: { status: 'paid', paidAt: new Date() } },
-      { returnDocument: 'after' },
+      { $set: { status: 'paid', paidAt: now, ...confirmationFields('seller', now) } },
+      { returnDocument: 'before' },
     );
-    if (paid) {
-      res.json(toSellerOrder(paid));
+    if (before) {
+      await recordPaymentEventBestEffort({
+        orderId: before._id,
+        orderRef: before.ref,
+        from: orderPaymentView(before).status,
+        to: 'confirmed',
+        source: 'seller',
+        eventId: `seller_confirmed:${before._id.toString()}`,
+        at: now,
+      });
+      res.json(toSellerOrder((await OrderModel.findById(before._id)) ?? before));
       return;
     }
 
@@ -64,6 +81,14 @@ export function createOrderRouter(auth: AuthProvider): Router {
     const filter = orderFilter(req);
     const { code } = confirmDeliverySchema.parse(req.body);
     res.json(toSellerOrder(await confirmDelivery(filter, code)));
+  });
+
+  // "Something is wrong with this payment" (for example the customer says they paid
+  // and no money has arrived). Recorded for ChopList to look at; it changes nothing
+  // about the order or the money. The seller's own orders only.
+  router.post('/:ref/payment-query', async (req, res) => {
+    const order = await loadOrNotFound(orderFilter(req));
+    res.status(201).json(await raisePaymentQuery(order, 'seller', paymentQueryBody.parse(req.body)));
   });
 
   // A new code for an order that is out for delivery (a lost code or a lockout).
