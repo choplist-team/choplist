@@ -67,6 +67,7 @@ export const useOrderPaymentStatus = (ref) => {
 
 export const useStartOrderPayment = () => {
   return useMutation({
-    mutationFn: (ref) => startOrderPayment(ref),
+    // { ref, email }: the email is optional.
+    mutationFn: ({ ref, email }) => startOrderPayment(ref, email),
   });
 };

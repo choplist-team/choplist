@@ -54,12 +54,15 @@ export const getOrderPaymentStatus = (ref) => {
   );
 };
 
-// Start a new Paystack payment attempt.
-export const startOrderPayment = (ref) => {
+// Start a new Paystack payment attempt. The email is optional: if the customer gives
+// one, Paystack sends their receipt there. ChopList does not store it.
+export const startOrderPayment = (ref, email) => {
   const accessKey = getOrderKey(ref);
+  const trimmedEmail = (email ?? "").trim();
 
   return apiRequest(`/public/orders/${encodeURIComponent(ref)}/pay`, {
     method: "POST",
     headers: accessKey ? { "X-Order-Key": accessKey } : {},
+    ...(trimmedEmail ? { body: { email: trimmedEmail } } : {}),
   });
 };

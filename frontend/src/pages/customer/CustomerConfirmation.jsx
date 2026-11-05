@@ -13,6 +13,9 @@ import {
 import CustomerHeader from "@/components/customer/Header";
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/api/api-client";
+import PaymentProblem from "@/components/customer/PaymentProblem";
+import PaymentQuotePreview from "@/components/customer/PaymentQuotePreview";
+import ReportPaidButton from "@/components/customer/ReportPaidButton";
 import {
   useOrderPaymentStatus,
   useStartOrderPayment,
@@ -24,6 +27,30 @@ const formatPrice = (price) =>
     currency: "NGN",
     maximumFractionDigits: 0,
   }).format(price ?? 0);
+
+// What the customer reads for each payment state (the server sends the raw word).
+const PAYMENT_STATE_LABELS = {
+  not_started: "Not paid yet",
+  awaiting_payment: "Waiting for payment confirmation",
+  paid: "Paid",
+  under_review: "Being checked by ChopList",
+  cancelled: "Cancelled",
+};
+
+// What to tell the customer about a cancelled order. If they had already paid online
+// (refund is set), their money is being returned; if it expired, say why.
+const cancelledMessage = (status) => {
+  if (status?.refund?.status === "refunded") {
+    return "This order was cancelled and your money has been refunded.";
+  }
+  if (status?.refund?.status === "due") {
+    return "This order was cancelled after you paid. Your money will be refunded.";
+  }
+  if (status?.cancelReason === "expired") {
+    return "This order was cancelled because it was not paid in time.";
+  }
+  return "This order has been cancelled.";
+};
 
 // Save the order reference and Paystack reference before redirecting.
 const savePaymentAttempt = (orderRef, paymentReference) => {
@@ -67,6 +94,8 @@ export default function CustomerConfirmation() {
   const [paymentError, setPaymentError] = useState("");
   const [onlinePaymentDisabled, setOnlinePaymentDisabled] =
     useState(false);
+  // Optional: where Paystack sends the receipt.
+  const [payerEmail, setPayerEmail] = useState("");
 
   const paymentLoading = startPaymentMutation.isPending;
 
@@ -93,7 +122,10 @@ export default function CustomerConfirmation() {
     setPaymentQuote(null);
 
     try {
-      const result = await startPaymentMutation.mutateAsync(orderRef);
+      const result = await startPaymentMutation.mutateAsync({
+        ref: orderRef,
+        email: payerEmail,
+      });
 
       if (!result?.authorizationUrl || !result?.reference) {
         throw new Error(
@@ -249,7 +281,8 @@ export default function CustomerConfirmation() {
               <span>
                 Payment status:{" "}
                 <strong>
-                  {currentPaymentState ??
+                  {PAYMENT_STATE_LABELS[currentPaymentState] ??
+                    currentPaymentState ??
                     orderDetails.status ??
                     (isStatusLoading ? "checking..." : "pending")}
                 </strong>
@@ -271,7 +304,7 @@ export default function CustomerConfirmation() {
 
             {currentPaymentState === "cancelled" && (
               <p className="rounded-xl bg-muted p-3 text-sm text-muted-foreground">
-                This order has been cancelled.
+                {cancelledMessage(paymentStatus)}
               </p>
             )}
 
@@ -334,6 +367,27 @@ export default function CustomerConfirmation() {
                     Pay securely online using Paystack. Your payment will
                     be confirmed automatically.
                   </p>
+
+                  {!paymentQuote && (
+                    <>
+                      <PaymentQuotePreview
+                        orderRef={orderRef}
+                        enabled={onlinePaymentAvailable}
+                      />
+
+                      <label className="block text-sm font-medium text-foreground">
+                        Email for your receipt (optional)
+                        <input
+                          type="email"
+                          value={payerEmail}
+                          onChange={(event) => setPayerEmail(event.target.value)}
+                          autoComplete="email"
+                          placeholder="you@example.com"
+                          className="mt-1 w-full rounded-lg border border-border bg-background p-2 text-sm"
+                        />
+                      </label>
+                    </>
+                  )}
 
                   {!paymentQuote ? (
                     <Button
@@ -487,6 +541,11 @@ export default function CustomerConfirmation() {
                     Your order remains pending until the seller confirms
                     your transfer. ChopList does not transfer money.
                   </p>
+
+                  <ReportPaidButton
+                    orderRef={orderRef}
+                    payment={paymentStatus?.payment}
+                  />
                 </section>
               )}
 
@@ -514,6 +573,8 @@ export default function CustomerConfirmation() {
                 </Button>
               </div>
             )}
+
+            <PaymentProblem orderRef={orderRef} />
           </div>
         </div>
 
