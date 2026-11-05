@@ -116,7 +116,7 @@ describe.skipIf(!testDbUri)('one seller can never see or touch another seller\'s
     const order = res.body.orders[0];
     expect(order).toMatchObject({ ref: a.ref, status: 'paid', paymentMethod: 'paystack', total: 7500 });
     expect(Object.keys(order).sort()).toEqual(
-      ['cancelledAt', 'createdAt', 'customer', 'delivery', 'deliveredAt', 'id', 'lines', 'note', 'outForDeliveryAt', 'paidAt', 'paymentMethod', 'ref', 'status', 'total'].sort(),
+      ['cancelledAt', 'createdAt', 'customer', 'delivery', 'deliveredAt', 'id', 'lines', 'note', 'outForDeliveryAt', 'paidAt', 'payment', 'paymentMethod', 'ref', 'status', 'total'].sort(),
     );
     const text = JSON.stringify(res.body);
     for (const hidden of ['serviceFee', 'platformFee', 'paystackFee', 'ACCT_', 'CLP-', 'subaccount', 'reference', a.key, hashAccessKey(a.key)]) {

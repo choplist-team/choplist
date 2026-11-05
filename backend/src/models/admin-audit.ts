@@ -9,6 +9,7 @@ export const ADMIN_ACTIONS = [
   'seller.reinstate',
   'order.reveal_phone',
   'report.resolve',
+  'payment_query.resolve',
 ] as const;
 export type AdminAction = (typeof ADMIN_ACTIONS)[number];
 

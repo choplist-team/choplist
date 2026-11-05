@@ -8,6 +8,7 @@ import { logEvent } from '../events/log.js';
 import { OrderModel } from '../models/order.js';
 import { PaymentModel, type PaymentDoc } from '../models/payment.js';
 import { SellerModel } from '../models/seller.js';
+import { confirmationFields, orderPaymentView, recordPaymentEvent } from '../orders/payment-state.js';
 import { PaystackError, type PaystackClient } from './paystack.js';
 
 // Our own references (see newPaymentReference in pay.ts). Anything else in a
@@ -51,6 +52,41 @@ async function raise(code: string, level: Severity, message: string, payment: Pa
   });
 }
 
+// The history entry for "Paystack confirmed this order's money". Its id is the Paystack
+// reference, so the same payment confirmed twice is recorded once.
+function paidEvent(payment: PaymentDoc, from: 'unpaid' | 'customer_reported' | 'failed' | 'confirmed') {
+  return {
+    orderId: payment.orderId,
+    orderRef: payment.orderRef,
+    from,
+    to: 'confirmed' as const,
+    source: 'paystack' as const,
+    eventId: `paystack:${payment.reference}`,
+    at: payment.paidAt ?? new Date(),
+  };
+}
+
+// Paystack says the charge failed. The order stays pending and unpaid; its payment
+// record says "failed" so the customer can be told to try again. A customer's own
+// "I've paid" (bank transfer) is never overwritten by this, and a later success on the
+// same order still confirms it.
+async function markPaymentFailed(payment: PaymentDoc): Promise<void> {
+  const before = await OrderModel.findOneAndUpdate(
+    { _id: payment.orderId, status: 'pending', 'payment.status': { $nin: ['customer_reported', 'confirmed', 'failed'] } },
+    { $set: { 'payment.status': 'failed' } },
+    { returnDocument: 'before' },
+  );
+  if (!before) return;
+  await recordPaymentEvent({
+    orderId: payment.orderId,
+    orderRef: payment.orderRef,
+    from: orderPaymentView(before).status,
+    to: 'failed',
+    source: 'paystack',
+    eventId: `paystack_failed:${payment.reference}`,
+  });
+}
+
 function isDuplicateKey(err: unknown): boolean {
   return err instanceof mongo.MongoServerError && err.code === 11000;
 }
@@ -65,10 +101,15 @@ function isDuplicateKey(err: unknown): boolean {
 //     set aside as needs_review for a human to refund. It is never hidden, and
 //     the seller's count is not touched.
 async function finishOrder(payment: PaymentDoc): Promise<WebhookOutcome> {
+  const paidAt = payment.paidAt ?? new Date();
   const set: Record<string, unknown> = {
     status: 'paid',
-    paidAt: payment.paidAt ?? new Date(),
+    paidAt,
     paymentMethod: 'paystack',
+    // Paystack confirmed the money: the order's payment record says so in the same
+    // write, with no click from anyone. The customer's and the seller's views both
+    // read this.
+    ...confirmationFields('paystack', paidAt),
     platformFeeKobo: payment.platformFeeKobo,
     paystackFeeKobo: payment.paystackFeeKobo,
   };
@@ -76,15 +117,22 @@ async function finishOrder(payment: PaymentDoc): Promise<WebhookOutcome> {
   if (payment.serviceFee !== undefined && payment.serviceFee !== null) set.serviceFee = payment.serviceFee;
   if (payment.platformFeeBps !== undefined && payment.platformFeeBps !== null) set.platformFeeBps = payment.platformFeeBps;
 
-  const won = await OrderModel.findOneAndUpdate({ _id: payment.orderId, status: 'pending' }, { $set: set }, { returnDocument: 'after' });
-  if (won) {
+  const before = await OrderModel.findOneAndUpdate({ _id: payment.orderId, status: 'pending' }, { $set: set }, { returnDocument: 'before' });
+  if (before) {
     // $inc is atomic, and only the one request that flipped pending -> paid gets here.
     await SellerModel.updateOne({ _id: payment.sellerId }, { $inc: { paidOrderCount: 1 } });
+    await recordPaymentEvent(paidEvent(payment, orderPaymentView(before).status));
     return 'paid';
   }
 
   const order = await OrderModel.findById(payment.orderId, { status: 1, paymentMethod: 1 }).lean();
-  if (order?.paymentMethod === 'paystack') return 'already_processed';
+  if (order?.paymentMethod === 'paystack') {
+    // Already paid by an earlier delivery. If that one died before writing the
+    // history entry, this retry writes it; if it exists, this changes nothing (the
+    // entry is identified by the Paystack reference, so it is stored once).
+    await recordPaymentEvent(paidEvent(payment, 'unpaid'));
+    return 'already_processed';
+  }
 
   await PaymentModel.updateOne({ _id: payment._id, status: 'succeeded' }, { $set: { status: 'needs_review' } });
   await raise('ORDER_NOT_PAYABLE', 'error', 'A payment arrived for an order that can no longer be paid; refund it', payment, {
@@ -126,6 +174,7 @@ export async function processChargeSuccess(reference: string, paystack: Paystack
     throw err;
   }
   if (verified.status !== 'success' || verified.reference !== reference) {
+    if (verified.status === 'failed' && verified.reference === reference) await markPaymentFailed(payment);
     await raise('NOT_CONFIRMED', 'warn', 'Paystack does not report this payment as successful', payment, { paystackStatus: verified.status });
     return 'not_confirmed';
   }

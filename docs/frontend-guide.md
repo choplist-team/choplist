@@ -247,6 +247,18 @@ on purpose. The response has the same shape as above; `order.status` is
 `pending`, `paid` or `cancelled`. Any lookup needs both parts, so keep the last 4
 digits as well (for example in the confirmation page's URL or in local storage).
 
+**"I've paid" and the payment state.** Orders have a `payment` object (`status`: `unpaid`,
+`customer_reported`, `confirmed`, `failed`) beside `status`; the contract is in
+[api.md](api.md) under **Order payment state**.
+
+- After the bank details, add an **I've paid** button: `POST /public/orders/:ref/report-paid` with the
+  `X-Order-Key` header. Then show "Waiting for the seller to confirm", **not** "Paid": it is the
+  customer's claim, and the order stays `pending` until the seller confirms.
+- Show **Paid** when `payment.status` is `confirmed`. Paystack orders reach it with no click from anyone.
+- Hide the button for online payments, cancelled orders and confirmed ones. Pressing it twice is safe.
+- A "Report a payment problem" form posts `{ reason, message }` to `/public/orders/:ref/payment-query`
+  (`409 QUERY_ALREADY_OPEN` means they already have one open).
+
 ## 4. Signing sellers in with Clerk
 
 **Use `@clerk/react`, not `@clerk/react-router`.** The commented-out code in

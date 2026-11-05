@@ -66,6 +66,7 @@ Every error, on every route, has this shape:
 | 404 | `SELLER_NOT_FOUND` | No seller has this public link |
 | 404 | `ORDER_NOT_FOUND` | No order matches that reference and phone digits (same error for both). On `/pay` and `/payment-status`: no order matches that reference and `X-Order-Key` (a wrong key, a missing key and an unknown reference all look the same) |
 | 404 | `REPORT_NOT_FOUND` | No "my order is missing" report has that id (admin) |
+| 404 | `PAYMENT_QUERY_NOT_FOUND` | No payment query has that id (admin) |
 | 404 | `SUBSCRIPTION_NOT_FOUND` | No subscription of this vendor has that reference (another vendor's reference looks the same) |
 | 409 | `SLUG_TAKEN` | The chosen link is used by another seller |
 | 409 | `MENU_NOT_DRAFT` | Editing a menu that is open or closed |
@@ -75,7 +76,8 @@ Every error, on every route, has this shape:
 | 409 | `CUTOFF_PASSED` | Opening a draft whose cut-off is in the past (edit it first) |
 | 409 | `ORDERING_CLOSED` | The menu is closed, not yet open, or past its cut-off |
 | 409 | `SOLD_OUT` | Not enough stock for at least one item; nothing was taken. The message names it, e.g. `Not enough left: only 2 Jollof rice left` |
-| 409 | `ORDER_CANCELLED` | Paying (by hand or online), sending out or confirming a cancelled order |
+| 409 | `ORDER_CANCELLED` | Paying (by hand or online), reporting a payment on, sending out or confirming a cancelled order |
+| 409 | `QUERY_ALREADY_OPEN` | The same person already has an open payment query on this order (one at a time) |
 | 409 | `ORDER_ALREADY_PAID` | Starting an online payment for an order that is already paid (or further along) |
 | 409 | `PAYMENTS_NOT_READY` | Starting an online payment for a seller who does not take them yet (not set up, suspended or deactivated). The message tells the customer to use bank transfer. Offer transfer instead |
 | 409 | `ORDER_NOT_PAID` | Sending an order out for delivery before it is paid |
@@ -1200,7 +1202,7 @@ Response `200`:
 ```
 
 - `action` is one of `seller.suspend`, `seller.deactivate`, `seller.reinstate`,
-  `order.reveal_phone`, `report.resolve`.
+  `order.reveal_phone`, `report.resolve`, `payment_query.resolve`.
 - `targetType` is `seller`, `order` or `report`. `targetId` is a seller id, an order
   reference or a report id. `targetLabel` is the seller's business name for seller
   actions (`null` if that seller no longer exists), the reference for orders, and
@@ -1397,6 +1399,7 @@ The seller's order object (includes the customer's phone and address):
   "lines": [{ "itemId": "6710b2d3e4b0a1b2c3d4e5f8", "name": "Jollof rice", "unitPrice": 3500, "qty": 2 }],
   "total": 7000,
   "paymentMethod": "transfer",
+  "payment": { "status": "customer_reported", "reportedAt": "2026-10-09T21:40:02.000Z", "confirmedAt": null, "confirmedBy": null },
   "paidAt": null,
   "cancelledAt": null,
   "outForDeliveryAt": null,
@@ -1408,6 +1411,11 @@ The seller's order object (includes the customer's phone and address):
 The delivery code is never part of this object, in any seller route. Nor is anything
 about fees, the customer's service fee, or Paystack: the seller sees `total` and
 `paymentMethod`. `paymentMethod` is new; orders from before Paystack are `"transfer"`.
+
+`payment` says where the **money** stands, separately from `status` (see
+[Order payment state](#order-payment-state-and-payment-queries)). `customer_reported` means the
+customer pressed "I've paid" after a bank transfer: **it is a claim, not verified funds**, the order
+is still `pending`, and you still confirm it with `PATCH /api/orders/:ref/paid`.
 
 ### GET /api/menus/:id/orders
 
@@ -1444,7 +1452,10 @@ PATCH /api/orders/CL-7KQ2M/paid
 Authorization: Bearer <token>
 ```
 
-Response `200`: the seller order object, `status: "paid"`, `paidAt` set.
+Response `200`: the seller order object, `status: "paid"`, `paidAt` set, and `payment` now
+`{ "status": "confirmed", "confirmedBy": "seller", ... }`. This is the seller **confirming the
+money** (a bank transfer). A customer's earlier "I've paid" (`payment.reportedAt`) is kept. Repeating
+it changes nothing and adds nothing to the order's payment history.
 
 Errors: `404 ORDER_NOT_FOUND`, `409 ORDER_CANCELLED`.
 
@@ -1844,6 +1855,9 @@ never returned. While the order is out for delivery:
 }
 ```
 
+`order.payment` is the payment state (`status`, `reportedAt`, `confirmedAt`, `confirmedBy`; see
+[Order payment state](#order-payment-state-and-payment-queries)).
+
 `deliveryCode` is a 6-digit string and is `null` in every other status. It is
 also `null` when `X-Order-Key` is missing or wrong; then, if the order is out for
 delivery, `deliveryCodeHidden` is `true` (otherwise `false`). So
@@ -1947,7 +1961,8 @@ Response `200`:
   "amountCharged": 7716,
   "reference": "CLP-9f2c4e8a1b7d3f6054a8c2e1",
   "paidAt": "2026-10-16T10:03:21.000Z",
-  "onlinePaymentAvailable": true
+  "onlinePaymentAvailable": true,
+  "payment": { "status": "confirmed", "reportedAt": null, "confirmedAt": "2026-10-16T10:03:21.000Z", "confirmedBy": "paystack" }
 }
 ```
 
@@ -1962,6 +1977,10 @@ Response `200`:
 - `serviceFee`, `amountCharged` and `reference` come from the attempt being described
   and are `null` before any online attempt, and for orders paid by bank transfer.
   `amountCharged` is the whole amount the customer paid, in naira.
+- `payment` is the order's payment state: `unpaid`, `customer_reported`, `confirmed` or `failed`
+  (see [Order payment state](#order-payment-state-and-payment-queries)). `payment.status` is
+  `confirmed` exactly when the order is paid, by either method; `failed` means Paystack
+  reported the card payment failed, so offer "Try again".
 - `onlinePaymentAvailable` is `true` only when the server has payments switched on and
   the seller is active and set up. Use it to decide whether to show the Pay button.
 - **Polling:** every 3 seconds for the first 30 seconds, then every 10 seconds, and stop
@@ -1972,6 +1991,118 @@ Response `200`:
   or anything about their payout account.
 
 Errors: `404 ORDER_NOT_FOUND`, `429 RATE_LIMITED`.
+
+## Order payment state and payment queries
+
+Where an order is **in its life** (`status`: pending, paid, out for delivery, delivered,
+cancelled) is kept apart from where its **money** stands (`payment`). "Paid" as an order status
+is still what delivery, the prep sheet and the admin figures use; `payment` says how it got there
+and who said so.
+
+```json
+{ "status": "confirmed", "reportedAt": "2026-10-09T21:40:02.000Z", "confirmedAt": "2026-10-09T22:15:40.000Z", "confirmedBy": "seller" }
+```
+
+| `payment.status` | Meaning | Order `status` |
+| ---------------- | ------- | -------------- |
+| `unpaid` | Nothing claimed or confirmed yet | `pending` |
+| `customer_reported` | The customer says they paid by **bank transfer**. A claim, **not verified funds**; the seller still confirms | `pending` |
+| `confirmed` | The money is confirmed: `confirmedBy` is `seller` (transfer) or `paystack` (online) | `paid` onwards |
+| `failed` | Paystack reported the online payment failed | `pending` |
+
+Rules:
+
+- **Bank transfer.** The customer can press "I've paid" right after transferring
+  (`report-paid`, below). It records `reportedAt` and changes nothing else: the order stays
+  `pending` and cannot go out for delivery. The seller confirms it with
+  `PATCH /api/orders/:ref/paid`, which makes it `confirmed` by `seller`.
+- **Paystack.** When Paystack confirms the payment (the signed webhook, then the server asks
+  Paystack), the order becomes `paid` and `payment` becomes `confirmed` by `paystack` in the
+  same step, with **no click from anyone**: the customer's and the seller's views both show it.
+  Coming back from checkout never marks anything paid.
+- **Retries.** A repeated webhook, a double tap and a crash-and-retry all leave one record: the
+  payment history is keyed by what happened (for Paystack, the payment reference), so it is stored once.
+- **Old orders** (placed before this existed) have no stored `payment`; it is worked out: paid orders
+  read as `confirmed` (by `paystack` or `seller`), the rest as `unpaid`. No migration is needed.
+- **History.** Every change is recorded (when, from, to, and by whom: `customer`, `seller` or
+  `paystack`) in a history kept per order. There is no API to read it yet; it is for answering
+  disputes from the database.
+
+### POST /api/public/orders/:ref/report-paid
+
+The customer's "I've paid" for a **bank transfer**. Needs the order's `X-Order-Key` (the same
+as `/pay`; every way of being wrong is the same `404 ORDER_NOT_FOUND`). No body.
+
+Response `200` (never cached):
+
+```json
+{
+  "ref": "CL-7KQ2M",
+  "orderStatus": "pending",
+  "paid": false,
+  "payment": { "status": "customer_reported", "reportedAt": "2026-10-09T21:40:02.000Z", "confirmedAt": null, "confirmedBy": null }
+}
+```
+
+- Safe to press twice: the first time is kept, nothing is added.
+- An order that is already paid is answered as it stands (`paid: true`), nothing changes.
+- A cancelled order is `409 ORDER_CANCELLED`.
+- It does **not** mark the order paid and does **not** tell the seller the money arrived. Show it
+  as "Waiting for the seller to confirm", not "Paid".
+- Do not offer it for an online (Paystack) payment: those confirm themselves.
+
+Errors: `404 ORDER_NOT_FOUND`, `409 ORDER_CANCELLED`, `429 RATE_LIMITED` (shares the limit on starting payments).
+
+### Payment queries ("there is a problem with this payment")
+
+A way to say that a payment looks wrong, and have a person at ChopList look at it. A query
+**records the problem only**: it does not change the order, move money or notify anyone by
+itself. **Who at ChopList receives and resolves these, and how fast, has not been decided.**
+Today an admin finds them in the admin console.
+
+`reason` is one of `payment_not_reflected` (I paid, the order still shows unpaid),
+`payment_not_received` (the customer says they paid, I see nothing), `paid_twice`, `wrong_amount`,
+`other`. `message` is 5 to 500 characters.
+
+**Customer:** `POST /api/public/orders/:ref/payment-query` with `X-Order-Key` and
+`{ "reason": "payment_not_reflected", "message": "I paid by transfer an hour ago" }`.
+**Seller:** `POST /api/orders/:ref/payment-query` with the same body, on their **own** order
+(another seller's order is `404 ORDER_NOT_FOUND`).
+
+Response `201` (both):
+
+```json
+{ "id": "6710c3e4e4b0a1b2c3d4e600", "orderRef": "CL-7KQ2M", "raisedBy": "customer", "reason": "payment_not_reflected", "message": "I paid by transfer an hour ago", "status": "open", "createdAt": "2026-10-09T21:45:00.000Z" }
+```
+
+One **open** query per order per person: asking again is `409 QUERY_ALREADY_OPEN` (once an admin
+resolves it, a new one can be raised). The customer route is strictly rate limited (5 per
+10 minutes per network). Errors: `400 VALIDATION_ERROR`, `401` (seller), `404 ORDER_NOT_FOUND`,
+`409 QUERY_ALREADY_OPEN`, `429 RATE_LIMITED`.
+
+**Admin:**
+
+- `GET /api/admin/payment-queries?status=open|resolved&page=&limit=`: open ones first, then newest
+  first. Each item has the query, the seller (`id`, `businessName`, `slug`) and the order **as it
+  stands now** (`status`, `total`, `paymentMethod`, `payment`), so the admin can see whether the
+  problem is already fixed. `openCount` is the number open overall. Never the customer's name,
+  phone or address.
+- `PATCH /api/admin/payment-queries/:id/resolve` with an optional `{ "note": "..." }` (up to 300
+  characters): open to resolved. Asking again changes nothing and adds no audit entry; the action
+  `payment_query.resolve` is written to the audit trail first. Resolving records that someone dealt
+  with it; it does not pay, refund or change the order. `404 PAYMENT_QUERY_NOT_FOUND`.
+
+### Cancelling after payment (not decided)
+
+Cancelling is **exactly as it was**: a seller can cancel a `pending`, `paid` or `out_for_delivery`
+order, the portions go back on sale, and nothing about the payment is touched. That leaves a
+conflict the team has not resolved: **cancelling a Paystack-paid order leaves the customer's money
+with Paystack and no refund path.** The order shows `status: "cancelled"` with
+`payment.status: "confirmed"`, the payment stays `succeeded`, and nothing flags it for a refund
+(only a payment that arrives *after* a cancellation is flagged `needs_review`). Until it is decided
+(refund automatically? forbid cancelling a paid online order? flag it for an admin?), a person
+must notice and refund by hand in the Paystack dashboard. The admin order detail marks such an
+order `paid_then_cancelled`.
 
 ## Paystack webhook
 
@@ -1996,7 +2127,9 @@ webhook URL in the Paystack dashboard (see [paystack-setup.md](paystack-setup.md
   that payment and checks that it succeeded, that the reference matches, and that the
   amount and currency are exactly what ChopList asked for. Amounts in the webhook body
   are never used.
-- **Then, once:** the payment is recorded as succeeded, the order is marked `paid` with
+- **Then, once:** the payment is recorded as succeeded, the order is marked `paid` (its
+  `payment` becomes `confirmed` by `paystack` in the same step and one history entry is
+  written) with
   `paymentMethod: "paystack"` (and keeps the fee figures of the attempt that was paid),
   and the seller's paid-order count goes up by one. Each of these is a conditional
   write that only one request can win, so repeats, simultaneous deliveries and two
@@ -2165,6 +2298,23 @@ transfer keeps working unchanged**: until the frontend ships these, nothing brea
 15. Stop showing the free-orders counter (`freeOrdersRemaining`): the per-order fee is
     off, so it means nothing now.
 
+**Order payment state**
+
+16. On the customer's confirmation and order-lookup screens, after the bank transfer instructions, add an
+    **"I've paid"** button calling `POST /api/public/orders/:ref/report-paid` (send the `X-Order-Key`).
+    Afterwards show **"Waiting for the seller to confirm"**, not "Paid". Hide it for online payments, for
+    cancelled orders and once `payment.status` is `confirmed`.
+17. Show **Paid** from `payment.status === "confirmed"` (or `state === "paid"` on the payment-status
+    route), for both transfer and Paystack. A Paystack payment shows Paid with no click from anyone.
+    On `payment.status === "failed"` say the card payment failed and offer to try again.
+18. Seller order cards: show `payment`. For `customer_reported`, show **"Customer says they paid"** with
+    `reportedAt` and keep the **Mark paid** button; do not treat it as paid.
+19. A **"Report a payment problem"** action for customers (`.../payment-query`, with the order key) and for
+    sellers (`/api/orders/:ref/payment-query`): a reason list and a message box; handle
+    `409 QUERY_ALREADY_OPEN` with "We already have your report".
+20. Admin: a **payment queries** page from `GET /api/admin/payment-queries` (open first, `openCount`) with a
+    resolve button and note. Nothing says who watches it yet; at least show `openCount` somewhere visible.
+
 **Admin**
 
 10. Show the `payments` and `funnel` blocks of `GET /api/admin/overview` with their
@@ -2238,6 +2388,17 @@ Not built, on purpose. Be upfront about these when presenting.
   receipts for them go nowhere. `npm run backfill:billing -- --check-clerk` counts them.
 - **Switching a vendor off (suspending) does not cancel their subscription;** the cover
   just carries on, unused.
+- **Cancelling a paid order has no refund path** (see Order payment state). Cancelling is unchanged.
+- **Nobody is assigned to payment queries.** There is no notification to the seller or to ChopList when
+  one is raised, and the person who raised it cannot see its status. The admin console is the only place.
+- **The order payment history has no API,** and the admin order detail does not show it.
+- **"I've paid" is a claim.** Nothing checks it against the bank. A customer can press it without paying;
+  that is why the seller still confirms and the order stays `pending`.
+- **`failed` is rare.** It is only set when Paystack's own confirmation of a payment says it failed; an
+  abandoned checkout stays `unpaid`. ChopList does not act on Paystack's failure events.
+- **Audit entries for the customer's and the seller's actions are best-effort:** if the database fails
+  between the order update and its history entry, the update stands and the entry is missing (logged).
+  Paystack's own path repairs a missing entry on its next delivery.
 
 ## Typical flows
 
@@ -2283,6 +2444,15 @@ Not built, on purpose. Be upfront about these when presenting.
    `payment-status` until `state` is `paid` (or one of the other end states).
 6. The seller sees the order as `paid` with `paymentMethod: "paystack"` and carries on
    as usual (out for delivery, delivery code, delivered).
+
+### A customer pays by bank transfer
+
+1. The customer places the order and sees the bank details (`POST /api/public/orders`).
+2. They transfer the money, then press **I've paid**: `POST /api/public/orders/:ref/report-paid` with
+   `X-Order-Key`. The order is still `pending`; `payment.status` is `customer_reported`.
+3. The seller sees "Customer says they paid", checks the bank app, and calls
+   `PATCH /api/orders/:ref/paid`. The order is `paid`; `payment.status` is `confirmed` by `seller`.
+4. If the money never arrives, the seller (or the customer) raises a payment query for an admin.
 
 ### A vendor subscribes
 
