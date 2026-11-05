@@ -1,7 +1,10 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { Check, Copy, Send } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "@clerk/react";
+import { Check, Copy, Lock, Send } from "lucide-react";
 import { ApiError } from "@/api/api-client";
+import { getShareLink } from "@/api/seller-billing-api";
+import { useSellerBilling } from "@/hooks/useSellerBilling";
 import SellerHeader from "@/components/seller/Header";
 import SellerBottomNav from "@/components/seller/BottomNav";
 import { ChopListLogo } from "@/components/choplist-logo";
@@ -130,6 +133,13 @@ export default function SellerDashboard() {
     refetch: refetchSeller,
   } = useCurrentSeller();
 
+  // Sharing the shop link needs a free trial or a subscription. The server decides
+  // (canShareLink); if it cannot be loaded we do not block, and the copy button asks
+  // the server again anyway. (Hooks stay up here, above the early returns below.)
+  const { getToken } = useAuth();
+  const billing = useSellerBilling();
+  const sharingBlocked = billing.data?.canShareLink === false;
+
   const openMenuMutation = useOpenMenu();
   const closeMenuMutation = useCloseMenu();
 
@@ -231,12 +241,27 @@ export default function SellerDashboard() {
   };
 
   const handleCopyLink = async () => {
-    if (!shareUrl) return;
+    if (!shareUrl || sharingBlocked) return;
 
     setActionError("");
 
+    // Ask the server for the link first. It refuses once the free trial has ended
+    // and there is no active subscription (SHARING_NOT_ALLOWED).
+    let linkToCopy = shareUrl;
     try {
-      await navigator.clipboard.writeText(shareUrl);
+      const share = await getShareLink(getToken);
+      linkToCopy = share.url ?? shareUrl;
+    } catch (error) {
+      if (error instanceof ApiError && error.code === "SHARING_NOT_ALLOWED") {
+        setActionError(error.message);
+        billing.refetch(); // the page then shows the subscribe prompt
+        return;
+      }
+      // Any other problem: fall back to the link we can build ourselves.
+    }
+
+    try {
+      await navigator.clipboard.writeText(linkToCopy);
       setCopied(true);
     } catch {
       setActionError(
@@ -474,20 +499,41 @@ export default function SellerDashboard() {
                     </h2>
                   </div>
 
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    Share this link with your customers so they can view your
-                    menu.
-                  </p>
+                  {sharingBlocked ? (
+                    <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-foreground">
+                      <p className="flex items-center gap-2 font-semibold">
+                        <Lock className="h-4 w-4" />
+                        Your free trial has ended
+                      </p>
+                      <p className="mt-1 text-muted-foreground">
+                        Subscribe to keep sharing your shop link. Customers who already
+                        have your link can still order.
+                      </p>
+                      <Link
+                        to="/seller/billing"
+                        className="mt-3 inline-block rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
+                      >
+                        See plans
+                      </Link>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        Share this link with your customers so they can view your
+                        menu.
+                      </p>
 
-                  <div className="mt-3 break-all rounded-lg bg-muted p-3 text-sm text-foreground">
-                    {shareUrl ||
-                      "Your customer link is unavailable because the shop slug is missing."}
-                  </div>
+                      <div className="mt-3 break-all rounded-lg bg-muted p-3 text-sm text-foreground">
+                        {shareUrl ||
+                          "Your customer link is unavailable because the shop slug is missing."}
+                      </div>
+                    </>
+                  )}
 
                   <button
                     type="button"
                     onClick={handleCopyLink}
-                    disabled={!shareUrl}
+                    disabled={!shareUrl || sharingBlocked}
                     className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {copied ? (
