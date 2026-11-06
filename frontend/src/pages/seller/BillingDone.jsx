@@ -1,10 +1,11 @@
 import { useAuth } from "@clerk/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useLocation, useSearchParams } from "react-router-dom";
 import { CheckCircle2, Clock3, TriangleAlert } from "lucide-react";
 
 import { getSubscriptionStatus } from "@/api/seller-billing-api";
+import SuspendedAccount from "@/components/seller/SuspendedAccount";
 import { formatDay } from "@/lib/money";
 
 // The page Paystack sends a seller back to after paying a subscription
@@ -13,7 +14,9 @@ import { formatDay } from "@/lib/money";
 // Arriving here proves NOTHING: the subscription only starts when Paystack confirms the
 // payment to ChopList's server. So this page asks the server until it says "active".
 // It asks every 3 seconds for the first 30 seconds, then every 10, and stops after about
-// 5 minutes (the confirmation can still arrive later; the Billing page will show it).
+// 5 minutes (the confirmation can still arrive later; the Billing page will show it). After
+// 30 seconds it says "still confirming" with a button to check again. It never polls after a
+// 4xx answer (the answer would not change), and stops when the seller leaves the page.
 
 const ATTEMPT_KEY = "choplist.subscriptionAttempt";
 const FAST = 3000;
@@ -39,6 +42,7 @@ export default function BillingDone() {
   const reference = usePaymentReference();
   const { getToken, isLoaded, isSignedIn } = useAuth();
   const queryClient = useQueryClient();
+  const location = useLocation();
   const [startedAt] = useState(() => Date.now());
 
   const query = useQuery({
@@ -47,6 +51,8 @@ export default function BillingDone() {
     enabled: Boolean(reference) && isLoaded && isSignedIn,
     retry: false,
     refetchInterval: (q) => {
+      const failedWith = q.state.error?.status;
+      if (failedWith >= 400 && failedWith < 500) return false;
       const status = q.state.data?.status;
       // Stop once it is settled one way or the other.
       if (status === "active" || status === "needs_review" || status === "cancelled") return false;
@@ -66,12 +72,20 @@ export default function BillingDone() {
     }
   }, [status, queryClient]);
 
-  // After about 5 minutes we stop saying "confirming" and tell them what to do instead.
+  // After 30 seconds we stop saying "confirming" and say it is taking longer (not a failure).
   const [timedOut, setTimedOut] = useState(false);
   useEffect(() => {
-    const timer = setTimeout(() => setTimedOut(true), GIVE_UP_AFTER);
+    const timer = setTimeout(() => setTimedOut(true), FAST_FOR);
     return () => clearTimeout(timer);
   }, []);
+
+  // The answer is decided by the error CODE, not the HTTP status.
+  const code = query.error?.code;
+  if (code === "ACCOUNT_SUSPENDED") return <SuspendedAccount />;
+  if (code === "UNAUTHENTICATED") {
+    const back = encodeURIComponent(location.pathname + location.search);
+    return <Navigate to={`/seller/sign-in?redirect_url=${back}`} replace />;
+  }
 
   return (
     <main className="min-h-[100dvh] bg-background px-4 py-10">
@@ -87,8 +101,14 @@ export default function BillingDone() {
         {reference && query.isError && (
           <>
             <TriangleAlert className="mx-auto size-12 text-amber-600" />
-            <h1 className="text-2xl font-bold text-foreground">We could not check your payment</h1>
-            <p className="text-sm text-muted-foreground">{query.error?.message || "Please check your Billing page in a moment."}</p>
+            <h1 className="text-2xl font-bold text-foreground">
+              {code === "SUBSCRIPTION_NOT_FOUND" ? "We could not find that payment" : "We could not check your payment"}
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              {code === "SUBSCRIPTION_NOT_FOUND"
+                ? "Open your Billing page to see whether your subscription is active, or start again."
+                : query.error?.message || "Please check your Billing page in a moment."}
+            </p>
           </>
         )}
 
@@ -108,7 +128,15 @@ export default function BillingDone() {
           </>
         )}
 
-        {reference && !query.isError && status !== "active" && status !== "needs_review" && (
+        {reference && !query.isError && status === "failed" && (
+          <>
+            <TriangleAlert className="mx-auto size-12 text-amber-600" />
+            <h1 className="text-2xl font-bold text-foreground">Your payment did not go through</h1>
+            <p className="text-sm text-muted-foreground">You have not been subscribed. If you were charged, please wait a moment and check your Billing page, or try again.</p>
+          </>
+        )}
+
+        {reference && !query.isError && status !== "active" && status !== "needs_review" && status !== "failed" && (
           <>
             <Clock3 className="mx-auto size-12 text-primary" />
             <h1 className="text-2xl font-bold text-foreground">{timedOut ? "Still waiting for confirmation" : "Confirming your payment..."}</h1>
@@ -117,12 +145,22 @@ export default function BillingDone() {
                 ? "If you have been charged, please do not pay again. Your subscription will appear on your Billing page once Paystack confirms it."
                 : "This usually takes a few seconds. Please keep this page open."}
             </p>
+            {timedOut && (
+              <button
+                type="button"
+                onClick={() => query.refetch()}
+                disabled={query.isFetching}
+                className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-foreground disabled:opacity-60"
+              >
+                {query.isFetching ? "Checking..." : "Check again"}
+              </button>
+            )}
           </>
         )}
 
         <div className="flex flex-col gap-2 pt-2">
           <Link to="/seller/billing" className="rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground">
-            Go to Billing
+            {status === "failed" ? "Try again" : "Go to Billing"}
           </Link>
           <Link to="/seller/dashboard" className="rounded-lg border border-border px-4 py-3 text-sm font-semibold text-foreground">
             Back to my menu
