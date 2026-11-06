@@ -31,10 +31,33 @@ export const DEFAULT_MONTHLY_NAIRA = 3000;
 // sale (orders/expire.ts). 0 turns the expiry off.
 export const DEFAULT_ORDER_EXPIRY_HOURS = 48;
 
-// 11,000, as the project description says. Note this is MORE than three months at
-// the monthly price (3 x 3,000 = 9,000), so the quarterly plan costs extra rather
-// than saving money; that is the agreed price, not a typo.
-export const DEFAULT_QUARTERLY_NAIRA = 11_000;
+// 8,000 for three calendar months: the confirmed price, cheaper than three monthly
+// payments (3 x 3,000 = 9,000).
+export const DEFAULT_QUARTERLY_NAIRA = 8_000;
+
+// A return page is a page on the FRONTEND. Paystack sends the browser there with a GET, so
+// an address under /api or on the webhook path (a POST-only, server-to-server route) shows
+// the customer a JSON error instead of the app. Refused at startup, with the setting named.
+// shortcut: the API host is recognised only by an "api." host name, upgrade if it ever differs.
+function returnPageSetting(name: string) {
+  return z
+    .string()
+    .optional()
+    .transform((raw) => (raw && raw.trim() !== '' ? raw.trim() : undefined))
+    .pipe(
+      z
+        .url({ protocol: /^https?$/, error: `${name} must be an http(s) URL` })
+        .refine(
+          (value) => {
+            if (!URL.canParse(value)) return true; // the url check above reports it
+            const { hostname, pathname } = new URL(value);
+            return !/^\/api(\/|$)/i.test(pathname) && !/webhooks?/i.test(pathname) && !hostname.toLowerCase().startsWith('api.');
+          },
+          { error: `${name} must be a page on the frontend, not an /api or webhook address` },
+        )
+        .optional(),
+    );
+}
 
 // A whole-number setting where a blank value (as left by .env.example) means "use the
 // default". Without this a blank would be read as 0 and refused at startup.
@@ -115,11 +138,7 @@ const EnvSchema = z.object({
     .pipe(z.string().startsWith('sk_', 'PAYSTACK_SECRET_KEY must start with sk_').optional()),
   // Where Paystack sends the customer after paying: a page on the frontend,
   // e.g. https://choplistafrica.com/pay/done. The order reference is added to it.
-  PAYSTACK_CALLBACK_URL: z
-    .string()
-    .optional()
-    .transform((raw) => (raw && raw.trim() !== '' ? raw.trim() : undefined))
-    .pipe(z.url({ protocol: /^https?$/, error: 'PAYSTACK_CALLBACK_URL must be an http(s) URL' }).optional()),
+  PAYSTACK_CALLBACK_URL: returnPageSetting('PAYSTACK_CALLBACK_URL'),
 
   // Unpaid orders hold stock until someone cancels them. After this many hours an order
   // that was never paid (and nobody is mid-payment on) is cancelled and its portions go
@@ -135,11 +154,7 @@ const EnvSchema = z.object({
   // The frontend page Paystack sends a vendor back to after paying a subscription,
   // e.g. https://choplistafrica.com/seller/subscription/done. Separate from the
   // customer's PAYSTACK_CALLBACK_URL because it is a different page.
-  SUBSCRIPTION_CALLBACK_URL: z
-    .string()
-    .optional()
-    .transform((raw) => (raw && raw.trim() !== '' ? raw.trim() : undefined))
-    .pipe(z.url({ protocol: /^https?$/, error: 'SUBSCRIPTION_CALLBACK_URL must be an http(s) URL' }).optional()),
+  SUBSCRIPTION_CALLBACK_URL: returnPageSetting('SUBSCRIPTION_CALLBACK_URL'),
   // The start of a shop link, without the slug, e.g. https://choplistafrica.com/shop
   // . GET /api/sellers/me/share returns base + "/" + slug. Unset = it returns the
   // slug only and the frontend builds the link itself.

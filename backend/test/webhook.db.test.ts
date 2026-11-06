@@ -235,7 +235,7 @@ describe.skipIf(!testDbUri)('POST /api/webhooks/paystack on a real MongoDB', () 
     });
 
     it('only POST is a webhook', async () => {
-      expect((await request(app).get(URL_PATH)).status).toBe(404);
+      expect((await request(app).get(URL_PATH)).status).toBe(405);
     });
 
     it('JSON parsing is untouched for every other route', async () => {

@@ -72,11 +72,11 @@ describe('parseEnv', () => {
   });
 
   describe('vendor billing settings', () => {
-    it('defaults to a 7 day trial, 3000 monthly and 11000 quarterly, with no return page', () => {
+    it('defaults to a 7 day trial, 3000 monthly and 8000 quarterly, with no return page', () => {
       const config = parseEnv(valid);
       expect(config.TRIAL_DAYS).toBe(7);
       expect(config.SUBSCRIPTION_MONTHLY_NAIRA).toBe(3000);
-      expect(config.SUBSCRIPTION_QUARTERLY_NAIRA).toBe(11_000);
+      expect(config.SUBSCRIPTION_QUARTERLY_NAIRA).toBe(8_000);
       expect(config.SUBSCRIPTION_CALLBACK_URL).toBeUndefined();
       expect(config.SHARE_URL_BASE).toBeUndefined();
     });
@@ -98,7 +98,7 @@ describe('parseEnv', () => {
 
     it('treats blank numbers, as left by .env.example, as "use the default" instead of 0', () => {
       const config = parseEnv({ ...valid, TRIAL_DAYS: '', SUBSCRIPTION_MONTHLY_NAIRA: '  ', SUBSCRIPTION_QUARTERLY_NAIRA: '' });
-      expect(config).toMatchObject({ TRIAL_DAYS: 7, SUBSCRIPTION_MONTHLY_NAIRA: 3000, SUBSCRIPTION_QUARTERLY_NAIRA: 11_000 });
+      expect(config).toMatchObject({ TRIAL_DAYS: 7, SUBSCRIPTION_MONTHLY_NAIRA: 3000, SUBSCRIPTION_QUARTERLY_NAIRA: 8_000 });
     });
 
     it('refuses a trial that is zero, negative, fractional, text or longer than 90 days', () => {
@@ -184,6 +184,23 @@ describe('parseEnv', () => {
       expect(parseEnv({ ...valid, PAYSTACK_CALLBACK_URL: '' }).PAYSTACK_CALLBACK_URL).toBeUndefined();
       expect(() => parseEnv({ ...valid, PAYSTACK_CALLBACK_URL: 'choplistafrica.com/pay' })).toThrow(/PAYSTACK_CALLBACK_URL/);
       expect(() => parseEnv({ ...valid, PAYSTACK_CALLBACK_URL: 'javascript:alert(1)' })).toThrow(/PAYSTACK_CALLBACK_URL/);
+    });
+
+    it('refuses a return page that is the webhook, under /api, or on the API host (either setting)', () => {
+      for (const name of ['PAYSTACK_CALLBACK_URL', 'SUBSCRIPTION_CALLBACK_URL'] as const) {
+        for (const bad of [
+          'https://api.choplistafrica.com/api/webhooks/paystack',
+          'https://choplistafrica.com/api/sellers/me/billing',
+          'https://choplistafrica.com/api',
+          'https://choplistafrica.com/webhooks/paystack',
+          'https://api.choplistafrica.com/paystack-return',
+        ]) {
+          expect(() => parseEnv({ ...valid, [name]: bad }), `${name} ${bad}`).toThrow(new RegExp(name));
+        }
+        // A frontend page, and a page whose name merely contains "api", are fine.
+        expect(parseEnv({ ...valid, [name]: 'https://choplistafrica.com/seller/billing/done' })[name]).toBe('https://choplistafrica.com/seller/billing/done');
+        expect(parseEnv({ ...valid, [name]: 'https://choplistafrica.com/apple-pay-done' })[name]).toBe('https://choplistafrica.com/apple-pay-done');
+      }
     });
   });
 

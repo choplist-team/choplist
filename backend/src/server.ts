@@ -2,6 +2,7 @@ import { createApp } from './app.js';
 import { createClerkAuth } from './auth/clerk.js';
 import { parseEnv, type Config } from './config.js';
 import { connectDb, disconnectDb } from './db.js';
+import { keyMode } from './admin/system.js';
 import { startMaintenance } from './jobs.js';
 import { createPaystackClient } from './payments/paystack.js';
 
@@ -24,6 +25,8 @@ try {
 
 // No key = payments off; the API still runs on bank transfer.
 const paystack = config.PAYSTACK_SECRET_KEY ? createPaystackClient(config.PAYSTACK_SECRET_KEY) : null;
+// The mode only, from the key's prefix. Never the key.
+console.log(`Paystack: ${keyMode(config.PAYSTACK_SECRET_KEY) ?? 'off'} mode`);
 
 const app = createApp({
   allowedOrigins: config.ALLOWED_ORIGINS,

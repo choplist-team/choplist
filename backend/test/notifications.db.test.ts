@@ -236,7 +236,7 @@ describe.skipIf(!testDbUri)('notifications, on a real MongoDB', () => {
       await request(app).post(`/api/orders/${o.ref}/payment-query`).set(asSeller(o)).send({ reason: 'other', message: 'the seller side' }).expect(201);
 
       const vendor = await makeSeller();
-      const sub = await SubscriptionModel.create({ sellerId: vendor._id, plan: 'quarterly', amountNaira: 11_000, status: 'pending', paystackReference: newSubscriptionReference() });
+      const sub = await SubscriptionModel.create({ sellerId: vendor._id, plan: 'quarterly', amountNaira: 8_000, status: 'pending', paystackReference: newSubscriptionReference() });
       paystack.verifyTransaction.mockImplementation(async (reference) => ({ status: 'success', reference, amountKobo: 300_000, currency: 'NGN' }));
       await deliverWebhook(app, sub.paystackReference).expect(200);
       await deliverWebhook(app, sub.paystackReference).expect(200);
