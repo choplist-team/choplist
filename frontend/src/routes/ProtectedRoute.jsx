@@ -1,6 +1,6 @@
 import { ChopListLogo } from "@/components/choplist-logo";
 import { useAuth } from "@clerk/react";
-import { Navigate, Outlet } from "react-router-dom";
+import { Navigate, Outlet, useLocation } from "react-router-dom";
 
 function Checking() {
   return (
@@ -17,13 +17,16 @@ function Checking() {
 
 export default function ProtectedRoute() {
   const { isLoaded, isSignedIn } = useAuth();
+  const location = useLocation();
 
   if (!isLoaded) {
     return <Checking />;
   }
 
   if (!isSignedIn) {
-    return <Navigate to="/seller/sign-in" replace />;
+    // Clerk sends them back to redirect_url after signing in (e.g. the Paystack return page).
+    const back = encodeURIComponent(location.pathname + location.search);
+    return <Navigate to={`/seller/sign-in?redirect_url=${back}`} replace />;
   }
 
   return <Outlet />;
