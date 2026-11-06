@@ -20,14 +20,14 @@ until the service restarts). All are described in `.env.example`.
 | Variable | Value |
 | -------- | ----- |
 | `PAYSTACK_SECRET_KEY` | The **test** secret key from Paystack dashboard > Settings > API Keys & Webhooks. Leave it empty to keep online payments off (bank transfer keeps working) |
-| `PAYSTACK_CALLBACK_URL` | The frontend page Paystack sends the customer back to after paying, e.g. `https://choplistafrica.com/pay/done`. **Agree the page with the frontend team first** |
+| `PAYSTACK_CALLBACK_URL` | The frontend page Paystack sends the customer back to after paying, `https://choplistafrica.com/paystack-return` (the customer return page that exists in the frontend). Refused at startup if it is under `/api` or on a webhook path |
 | `ORDER_EXPIRY_HOURS` | `48` (optional). Unpaid orders older than this are cancelled and their portions put back on sale; `0` switches it off. See api.md, Expiry. **Agree the number with the team before relying on it** |
 | `PLATFORM_FEE_BPS` | `0` (ChopList takes no cut of each order; it earns from subscriptions). The default is 0, so leaving it unset is the same. Setting it above 0 switches the old tiers back on (`FREE_ORDERS` free orders, then this many basis points) |
 | `SUBSCRIPTION_CALLBACK_URL` | The frontend page Paystack sends a vendor back to after paying a subscription: `https://choplistafrica.com/seller/billing/done` (this page exists in the frontend now). It is not the customer's page |
 | `SHARE_URL_BASE` | Start of a shop link without the slug, e.g. `https://choplistafrica.com/shop` (optional) |
 | `TRIAL_DAYS` | `7` (optional) |
 | `SUBSCRIPTION_MONTHLY_NAIRA` | `3000` (optional) |
-| `SUBSCRIPTION_QUARTERLY_NAIRA` | `11000` (optional; this is the default) |
+| `SUBSCRIPTION_QUARTERLY_NAIRA` | `8000` (optional; this is the default) |
 
 **After every deploy, open `GET /api/admin/system`** (as an admin). It says whether Paystack is in test or live mode, whether the return pages are set, and warns
 about anything that looks wrong, without ever showing a key.
@@ -174,6 +174,38 @@ dashboard and tell the seller and customer.
 
 If online payments must be switched off quickly, clear `PAYSTACK_SECRET_KEY` on Render
 and redeploy: every seller falls back to bank transfer and nothing else changes.
+
+## 4b. Test and live: webhook, return pages and payout accounts
+
+Paystack keeps **test** and **live** completely separate: keys, webhook and callback
+addresses, and every seller's payout account (subaccount).
+
+| Where | Setting | Value (both modes) |
+|---|---|---|
+| Paystack dashboard, the mode you are using | **Webhook URL** | `https://api.choplistafrica.com/api/webhooks/paystack` (server to server, POST only) |
+| Paystack dashboard, the mode you are using | **Callback URL** | Leave empty, or a frontend page. **Never** the webhook address or anything under `/api`. The server sends its own for every payment |
+| Render | `PAYSTACK_CALLBACK_URL` | `https://choplistafrica.com/paystack-return` |
+| Render | `SUBSCRIPTION_CALLBACK_URL` | `https://choplistafrica.com/seller/billing/done` (a vendor lands here, signed in, and the page asks the API until the subscription is active) |
+
+If a browser ever shows `{"error":{"code":"METHOD_NOT_ALLOWED"...}}` after paying, the
+webhook address was used as a return page. The server refuses to start with a return
+address under `/api`, on a webhook path or on an `api.` host.
+
+The mode is read from the key (`sk_test_` or `sk_live_`), logged at startup as
+`Paystack: test mode` or `Paystack: live mode` (never the key), and shown in the admin
+system check (`paystack.mode`).
+
+**Moving to live:** payout accounts made in test do not exist in live. After switching the
+key, run the dry run, read it, then apply (take an Atlas snapshot first):
+
+```
+cd backend
+npm run paystack:resubaccount             # dry run: counts only
+npm run paystack:resubaccount -- --apply  # recreates each seller's payout account in the current mode
+```
+
+It never runs by itself and never prints the key, codes or account numbers. Sellers
+without a stored bank code are listed in the count and must pick their bank again.
 
 ## 5. Before real money
 

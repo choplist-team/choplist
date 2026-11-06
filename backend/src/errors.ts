@@ -3,6 +3,7 @@
 // Later steps add codes here as they need them.
 export const ERROR_CODES = [
   'NOT_FOUND',
+  'METHOD_NOT_ALLOWED',
   'INVALID_JSON',
   'PAYLOAD_TOO_LARGE',
   'BAD_REQUEST',

@@ -323,9 +323,9 @@ their shop link **through the app**.
   it does not block selling, sharing or paying. An admin can set it (see
   [Admin: managing subscriptions](#admin-managing-subscriptions-and-verification)). Who verifies
   vendors, how, and what "verified" unlocks are still open product decisions.
-- **Plans:** monthly **₦3,000**, quarterly **₦11,000**, as the project description says.
-  Note the quarterly plan costs more than three months at the monthly price (₦9,000),
-  so it is not a saving. Both prices are settings, in whole naira.
+- **Plans:** monthly **₦3,000** (1 calendar month), quarterly **₦8,000** (3 calendar months),
+  the confirmed prices. Quarterly is cheaper than three monthly payments (₦9,000). Both
+  prices are settings, in whole naira.
 - **Money.** Subscription payments go to **ChopList's own Paystack account**: no
   subaccount, no split. They are separate from customers paying vendors for orders.
 - **No per-order platform fee** any more (see [What a payment costs](#what-a-payment-costs)).
@@ -367,7 +367,7 @@ function.
   "verificationDue": false,
   "plans": [
     { "id": "monthly", "months": 1, "priceNaira": 3000 },
-    { "id": "quarterly", "months": 3, "priceNaira": 11000 }
+    { "id": "quarterly", "months": 3, "priceNaira": 8000 }
   ]
 }
 ```
@@ -538,7 +538,7 @@ receipt goes nowhere.
 | -------- | ------- | ------- |
 | `TRIAL_DAYS` | `7` | Length of the free trial |
 | `SUBSCRIPTION_MONTHLY_NAIRA` | `3000` | Monthly price |
-| `SUBSCRIPTION_QUARTERLY_NAIRA` | `11000` | Quarterly price |
+| `SUBSCRIPTION_QUARTERLY_NAIRA` | `8000` | Quarterly price |
 | `SUBSCRIPTION_CALLBACK_URL` | none | The frontend page Paystack sends a vendor back to after paying (agree the route with the frontend team) |
 | `SHARE_URL_BASE` | none | Start of a shop link without the slug, e.g. `https://choplistafrica.com/shop` |
 | `PLATFORM_FEE_BPS` | `0` | Per-order fee. `0` = off |
@@ -2381,7 +2381,7 @@ Show the unread count somewhere visible. These are **in addition to** the event 
   "returnPages": { "payment": true, "subscription": false },
   "shareUrlBaseSet": true,
   "pricing": { "platformFeeBps": 0, "freeOrders": 50 },
-  "billing": { "trialDays": 7, "monthlyNaira": 3000, "quarterlyNaira": 11000 },
+  "billing": { "trialDays": 7, "monthlyNaira": 3000, "quarterlyNaira": 8000 },
   "orderExpiryHours": 48,
   "allowedOriginCount": 3,
   "adminCount": 2,
@@ -2693,8 +2693,7 @@ Not built, on purpose. Be upfront about these when presenting.
 - **The share restriction is soft** (see Vendor billing): a shared link keeps working, and
   it protects nothing until the frontend uses `GET /api/sellers/me/share`. A product
   decision for the team to confirm.
-- **The quarterly plan costs more than three months of the monthly plan** (₦11,000 against ₦9,000), as
-  the project description says. If that was not intended, change `SUBSCRIPTION_QUARTERLY_NAIRA`.
+- **The quarterly price (₦8,000) is a setting**: change `SUBSCRIPTION_QUARTERLY_NAIRA` if the team agrees a different one.
 - **Verification is recorded, not run.** An admin can set it, but nothing depends on it, and who verifies and what it unlocks is undecided.
 - **No automatic renewal.** A vendor pays again by hand each period; the only help is the reminder 3 days before. Recurring billing needs Paystack
   to store the vendor's card for reuse, which has not been built or tested.

@@ -34,11 +34,11 @@ You need Node 20.19 or newer, a MongoDB database, and a Clerk application.
    | `FREE_ORDERS` | Optional (default 50). A seller's first N paid orders have no ChopList fee |
    | `PLATFORM_FEE_BPS` | Optional (default 0 = off). ChopList no longer takes a cut of each order; it earns from vendor subscriptions. Above 0 switches the old tiers back on (a fee after the free orders, in basis points, max 2000) |
    | `PAYSTACK_SECRET_KEY` | Optional. Paystack secret key (`sk_test_...` for now). Blank = Paystack payments off, bank transfer only |
-   | `PAYSTACK_CALLBACK_URL` | Optional. Frontend page Paystack returns the customer to after paying |
+   | `PAYSTACK_CALLBACK_URL` | Optional. Frontend page Paystack returns the customer to after paying. Refused at startup if it is under `/api`, on a webhook path or on an `api.` host |
    | `ORDER_EXPIRY_HOURS` | Optional (default 48, `0` = off). Unpaid orders older than this are cancelled and their portions put back on sale. Run `npm run expire:orders` for a dry run |
    | `TRIAL_DAYS` | Optional (default 7). Free trial for a new vendor, from when their profile is created |
    | `SUBSCRIPTION_MONTHLY_NAIRA` | Optional (default 3000) |
-   | `SUBSCRIPTION_QUARTERLY_NAIRA` | Optional (default 11000, the project description's price for 3 months) |
+   | `SUBSCRIPTION_QUARTERLY_NAIRA` | Optional (default 8000, the confirmed price for 3 months) |
    | `SUBSCRIPTION_CALLBACK_URL` | Optional. Frontend page Paystack returns a vendor to after paying a subscription |
    | `SHARE_URL_BASE` | Optional. Start of a shop link without the slug, e.g. `https://choplistafrica.com/shop`. See `docs/api.md`, Vendor billing |
    | `ADMIN_CLERK_USER_IDS` | Optional. Clerk user ids (comma separated) allowed to use `/api/admin`. Empty = no admins |

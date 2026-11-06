@@ -169,7 +169,7 @@ describe.skipIf(!testDbUri)('vendor billing on a real MongoDB', () => {
       const res = await request(app).get('/api/sellers/me/billing').set(asSeller(seller.clerkUserId));
       expect(res.body.plans).toEqual([
         { id: 'monthly', months: 1, priceNaira: 3000 },
-        { id: 'quarterly', months: 3, priceNaira: 11_000 },
+        { id: 'quarterly', months: 3, priceNaira: 8_000 },
       ]);
     });
 
@@ -332,8 +332,8 @@ describe.skipIf(!testDbUri)('vendor billing on a real MongoDB', () => {
     it('charges the quarterly price for the quarterly plan', async () => {
       const seller = await makeSeller();
       const res = await request(app).post('/api/sellers/me/billing/subscribe').set(asSeller(seller.clerkUserId)).send({ plan: 'quarterly' });
-      expect(res.body).toMatchObject({ plan: 'quarterly', amountNaira: 11_000 });
-      expect(paystack.initializeTransaction.mock.calls[0]![0].amountKobo).toBe(1_100_000);
+      expect(res.body).toMatchObject({ plan: 'quarterly', amountNaira: 8_000 });
+      expect(paystack.initializeTransaction.mock.calls[0]![0].amountKobo).toBe(800_000);
     });
 
     it('uses the prices from the configuration, frozen on the row', async () => {

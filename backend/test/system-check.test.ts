@@ -41,7 +41,7 @@ describe('buildSystemCheck', () => {
       returnPages: { payment: true, subscription: true },
       shareUrlBaseSet: true,
       pricing: { platformFeeBps: 0, freeOrders: 50 },
-      billing: { trialDays: 7, monthlyNaira: 3000, quarterlyNaira: 11_000 },
+      billing: { trialDays: 7, monthlyNaira: 3000, quarterlyNaira: 8_000 },
       orderExpiryHours: 0,
       adminCount: 1,
     });

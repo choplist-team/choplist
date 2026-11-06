@@ -79,6 +79,10 @@ export function createApp(options: AppOptions): Express {
     express.raw({ type: () => true, limit: WEBHOOK_BODY_LIMIT }),
     createWebhookHandler({ secretKey: options.paystackSecretKey ?? null, paystack: options.paystack ?? null }),
   );
+  // A browser that opens this address (a wrong return page) gets a clear answer, not "not found".
+  app.all('/api/webhooks/paystack', (_req, res) => {
+    res.set('Allow', 'POST').status(405).json({ error: { code: 'METHOD_NOT_ALLOWED', message: 'This address only accepts POST requests from Paystack. It is not a page.' } });
+  });
 
   app.use(express.json({ limit: JSON_BODY_LIMIT }));
 

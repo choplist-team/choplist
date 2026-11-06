@@ -76,7 +76,7 @@ describe.skipIf(!testDbUri)('admin view of subscriptions, on a real MongoDB', ()
     it('counts a vendor with two subscriptions queued once', async () => {
       const s = await seller({ billing: billing(40) });
       await sub(s._id, { paidDaysAgo: 10, startsDaysAgo: 10, endsInDays: 20, seq: 1 });
-      await sub(s._id, { plan: 'quarterly', amount: 11_000, paidDaysAgo: 5, startsDaysAgo: -20, endsInDays: 110, seq: 2 });
+      await sub(s._id, { plan: 'quarterly', amount: 8_000, paidDaysAgo: 5, startsDaysAgo: -20, endsInDays: 110, seq: 2 });
       expect((await overview()).activeNow).toBe(1);
     });
 
@@ -90,15 +90,15 @@ describe.skipIf(!testDbUri)('admin view of subscriptions, on a real MongoDB', ()
       const a = await seller({ billing: billing(40) });
       const b = await seller({ billing: billing(40) });
       await sub(a._id, { amount: 3000, paidDaysAgo: 3 });
-      await sub(a._id, { plan: 'quarterly', amount: 11_000, paidDaysAgo: 2, seq: 2 });
+      await sub(a._id, { plan: 'quarterly', amount: 8_000, paidDaysAgo: 2, seq: 2 });
       await sub(b._id, { amount: 3000, paidDaysAgo: 45, endsInDays: -15 }); // outside the last 30 days
       // None of these is income.
       await sub(b._id, { status: 'pending' });
       await sub(b._id, { status: 'failed' });
-      await sub(b._id, { status: 'needs_review', amount: 11_000 });
+      await sub(b._id, { status: 'needs_review', amount: 8_000 });
 
       const result = await overview();
-      expect(result.revenue).toEqual({ allTime: 17_000, last30Days: 14_000 });
+      expect(result.revenue).toEqual({ allTime: 14_000, last30Days: 11_000 });
       expect(result.purchases).toEqual({ allTime: 3, last30Days: 2, monthly: 2, quarterly: 1 });
       expect(result.needsReview).toBe(1);
     });
@@ -133,7 +133,7 @@ describe.skipIf(!testDbUri)('admin view of subscriptions, on a real MongoDB', ()
       const a = await seller({ billing: billing(40) });
       const b = await seller({ billing: billing(40) });
       const first = await sub(a._id, { paidDaysAgo: 30, endsInDays: 0 });
-      await sub(a._id, { plan: 'quarterly', amount: 11_000, paidDaysAgo: 2, seq: 2 });
+      await sub(a._id, { plan: 'quarterly', amount: 8_000, paidDaysAgo: 2, seq: 2 });
       const pending = await sub(b._id, { status: 'pending' });
 
       const all = await request(app).get('/api/admin/subscriptions').set(asAdmin);
@@ -167,7 +167,7 @@ describe.skipIf(!testDbUri)('admin view of subscriptions, on a real MongoDB', ()
     it('shows their state, trial, current subscription and how long cover lasts', async () => {
       const s = await seller({ billing: billing(40) });
       const current = await sub(s._id, { paidDaysAgo: 5, endsInDays: 25, seq: 1 });
-      await sub(s._id, { plan: 'quarterly', amount: 11_000, paidDaysAgo: 2, startsDaysAgo: -25, endsInDays: 115, seq: 2 });
+      await sub(s._id, { plan: 'quarterly', amount: 8_000, paidDaysAgo: 2, startsDaysAgo: -25, endsInDays: 115, seq: 2 });
 
       const body = await detail(s._id);
       expect(body.billing).toMatchObject({ state: 'active', canShareLink: true, subscription: { id: current._id.toString(), plan: 'monthly' }, verification: { status: 'not_started' } });

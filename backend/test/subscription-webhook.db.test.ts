@@ -58,7 +58,7 @@ async function startedSubscription(sellerId: Types.ObjectId, plan: SubscriptionP
   return SubscriptionModel.create({
     sellerId,
     plan,
-    amountNaira: plan === 'monthly' ? 3000 : 11_000,
+    amountNaira: plan === 'monthly' ? 3000 : 8_000,
     status: 'pending',
     paystackReference: newSubscriptionReference(),
   });
@@ -261,7 +261,7 @@ describe.skipIf(!testDbUri)('the subscription webhook on a real MongoDB', () => 
       const logged = await events();
       expect(logged).toHaveLength(1);
       expect(logged[0]).toMatchObject({ level: 'error', code: 'AMOUNT_MISMATCH', sellerId: seller._id });
-      expect(logged[0]!.meta).toMatchObject({ expectedKobo: 1_100_000, receivedKobo: 300_000, reference: sub.paystackReference });
+      expect(logged[0]!.meta).toMatchObject({ expectedKobo: 800_000, receivedKobo: 300_000, reference: sub.paystackReference });
 
       // A repeat of the same webhook does not revive it.
       await deliver(chargeSuccess(sub.paystackReference)).expect(200);
@@ -449,7 +449,7 @@ describe.skipIf(!testDbUri)('the subscription webhook on a real MongoDB', () => 
       const seller = await makeSeller('over');
       paystackConfirmsWhatWasAsked();
       await SubscriptionModel.create({
-        sellerId: seller._id, plan: 'quarterly', amountNaira: 11_000, status: 'needs_review', paystackReference: newSubscriptionReference(),
+        sellerId: seller._id, plan: 'quarterly', amountNaira: 8_000, status: 'needs_review', paystackReference: newSubscriptionReference(),
         startsAt: new Date('2030-01-01T00:00:00.000Z'), expiresAt: new Date('2030-04-01T00:00:00.000Z'),
       });
       const sub = await startedSubscription(seller._id, 'monthly');

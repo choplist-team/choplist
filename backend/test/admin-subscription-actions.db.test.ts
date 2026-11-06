@@ -184,7 +184,7 @@ describe.skipIf(!testDbUri)('admin actions on subscriptions and verification, on
 
     it('if the subscription changes between the check and the cancel, the cancel does not clobber it', async () => {
       const s = await makeSeller({ billing: billingOver() });
-      const sub = await SubscriptionModel.create({ sellerId: s._id, plan: 'quarterly', amountNaira: 11_000, status: 'active', paystackReference: newSubscriptionReference(), paidAt: new Date(), startsAt: new Date(), expiresAt: new Date(Date.now() + 30 * DAY_MS), seq: 1 });
+      const sub = await SubscriptionModel.create({ sellerId: s._id, plan: 'quarterly', amountNaira: 8_000, status: 'active', paystackReference: newSubscriptionReference(), paidAt: new Date(), startsAt: new Date(), expiresAt: new Date(Date.now() + 30 * DAY_MS), seq: 1 });
       // Just before the cancel's own write, something else moves it to needs_review.
       const original = SubscriptionModel.findOneAndUpdate.bind(SubscriptionModel);
       const spy = vi.spyOn(SubscriptionModel, 'findOneAndUpdate').mockImplementationOnce(((...args: Parameters<typeof original>) => {
@@ -233,7 +233,7 @@ describe.skipIf(!testDbUri)('admin actions on subscriptions and verification, on
   describe('recording a refund of a subscription payment', () => {
     const wrongAmount = async () => {
       const s = await makeSeller({ billing: billingOver() });
-      const sub = await SubscriptionModel.create({ sellerId: s._id, plan: 'quarterly', amountNaira: 11_000, status: 'pending', paystackReference: newSubscriptionReference() });
+      const sub = await SubscriptionModel.create({ sellerId: s._id, plan: 'quarterly', amountNaira: 8_000, status: 'pending', paystackReference: newSubscriptionReference() });
       paystack.verifyTransaction.mockImplementation(async (reference) => ({ status: 'success', reference, amountKobo: 300_000, currency: 'NGN' }));
       await deliverWebhook(app, sub.paystackReference).expect(200);
       expect((await SubscriptionModel.findById(sub._id))!.status).toBe('needs_review');
